@@ -1,5 +1,7 @@
 # Ratchet — The Operator Playbook
 
+[![GitHub Repo](https://img.shields.io/badge/GitHub-baisethomas%2FRatchet-181717?logo=github&logoColor=white)](https://github.com/baisethomas/Ratchet)
+
 Everything needed to run the craft — with any model — as drop-in files. Nothing here requires the strongest model; that's the point.
 
 **Why "Ratchet":** the mechanism that only turns one way. The model's ceiling is fixed; the system's isn't. Every failure that escapes produces one permanent addition to the process — a rule, a hook, a test, an escalation gate — and the system never slips backward.
