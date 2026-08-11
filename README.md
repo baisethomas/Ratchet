@@ -15,16 +15,18 @@ Everything needed to run the craft — with any model — as drop-in files. Noth
 | `drop-in/claude-ai-project-instructions.md` | ~180-word epistemics core | Claude.ai → Project → Custom instructions (or Settings → Preferences for account-wide) |
 | `drop-in/api-system-prompt.txt` | Reliability rules + optional second-pass reviewer prompt | Appended to the system prompt of any API-powered app |
 | `drop-in/review-prompts.md` | 8 copy-paste prompts: adversarial review, re-derivation, fresh-context adversary, decomposition assist, hostile diff review, reproduce-revert-restore, honest summary, plan-first leash | Keep open in a tab; paste as needed |
-| `drop-in/claude-code-hooks-settings.json` | Post-edit lint hook, stop-hook test gate, destructive-command guard | Merge into `.claude/settings.json` in the repo; replace placeholder commands with yours |
+| `drop-in/claude-code-hooks-settings.json` | Post-edit lint hook, stop-hook test gate, destructive-command guard | Merge into `.claude/settings.json` in the repo; copy `drop-in/hooks/` alongside it |
+| `drop-in/hooks/` | The three hooks as tested scripts, plus `test-hooks.sh` (34 regression cases) | Copy to `.claude/hooks/`, `chmod +x`, fill the `CHECKS` array in `check-on-stop.sh`, then run `test-hooks.sh` |
 | `drop-in/done-audit-checklist.md` | The two-minute human audit for every "done," plus the ratchet rule | Print or pin next to wherever you review completions |
 | `drop-in/graduation-rule.md` | When a recurring workflow graduates from prompts to a pipeline — nodes, conditional edges, loop caps, and when NOT to graduate | Read once; apply when a workflow has run ~3+ times with the same shape |
 | `drop-in/pipeline-skeleton.py` | A graduated workflow in plain Python: draft → review → conditional revise loop (capped) → done/escalate. Generic — swap the three prompt constants for any recurring task | Copy into the app's repo; prove the gate can fail before trusting it |
+| `drop-in/test_pipeline_skeleton.py` | 15 cases for the review gate — conflicting, qualified, non-final, and empty verdicts must all reach a human | Copy alongside the skeleton; run it after changing the gate |
 
 ## Install order (30 minutes total)
 
 1. **Claude.ai (2 min):** paste `claude-ai-project-instructions.md` into your main Project's custom instructions.
 2. **Each active repo (10 min):** copy `CLAUDE.md` to the root, fill the FILL-ME sections — especially the single check command and the hard-stop paths.
-3. **Hooks (10 min):** merge `claude-code-hooks-settings.json` into `.claude/settings.json`, swap in your real lint/test commands, extend the destructive-command pattern for your stack. Verify hook syntax against current Claude Code docs — shapes occasionally change between releases.
+3. **Hooks (10 min):** copy `drop-in/hooks/` to `.claude/hooks/` and `chmod +x` the scripts, merge `claude-code-hooks-settings.json` into `.claude/settings.json`, fill the `CHECKS` array in `check-on-stop.sh` with your real commands, and extend the destructive-command patterns for your stack. **Then run `.claude/hooks/test-hooks.sh` — a hook that silently does nothing looks exactly like a hook that works.** Verify shapes against [the current hooks docs](https://code.claude.com/docs/en/hooks); they occasionally change between releases.
 4. **API apps (5 min):** append `api-system-prompt.txt` to each app's system prompt. For any app producing final deliverables, wire the optional second-pass reviewer as a second API call.
 5. **You (3 min):** read `done-audit-checklist.md` once; use it on the next three completions until it's reflex.
 6. **Later, as needed:** when any workflow has run ~3+ times with the same shape, apply `graduation-rule.md` — promote it to a pipeline using `pipeline-skeleton.py` as the starting point.
