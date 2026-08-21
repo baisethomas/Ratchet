@@ -6,6 +6,10 @@ This is durable project memory: decisions that future agents should not reopen a
 
 Unlike STATE.md, this file is append-oriented. The agent owns maintaining it. Record durable choices when their rationale would otherwise be lost and future work would be constrained by them.
 
+SAFETY: Never record secrets, credentials, access tokens, personal/customer data, or sensitive security/incident details. Use sanitized references to the approved protected system instead.
+
+CONCURRENCY: Re-read this file immediately before writing. Preserve decisions added elsewhere, append rather than overwrite, and resolve conflicts explicitly. Never silently drop another branch's accepted or proposed decision.
+
 Autonomy rule:
 - Low-impact implementation choices usually stay in code and do not need an entry.
 - Medium-impact durable choices may be decided and recorded by the agent, then surfaced in the completion summary.
