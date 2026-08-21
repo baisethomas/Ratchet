@@ -5,6 +5,10 @@ DROP-IN: copy this file to `.ratchet/STATE.md` in the target repository.
 This is the project's mutable semantic handoff. Keep it short, current, and factual.
 Agents may update this file as work progresses.
 
+SAFETY: Never record secrets, credentials, access tokens, personal/customer data, or sensitive security/incident details here. Use sanitized references to the approved protected system instead.
+
+CONCURRENCY: Re-read this file immediately before writing. Preserve unrelated active work from other agents/branches and merge conflicts semantically. Never discard another agent's current state silently.
+
 Do not turn this into a session transcript. Preserve only the state another competent agent needs to continue without replaying prior conversations.
 -->
 
@@ -25,7 +29,7 @@ FILL-ME
 
 ## Working on
 
-<!-- What is actively in flight right now? -->
+<!-- What is actively in flight right now? For simultaneous work, include branch/worktree and owner. -->
 - FILL-ME
 
 ## Next
@@ -40,7 +44,7 @@ FILL-ME
 
 ## Important context
 
-<!-- Facts a fresh agent could not safely infer from the code alone. -->
+<!-- Sanitized facts a fresh agent could not safely infer from the code alone. -->
 - FILL-ME
 
 ## Verification status
@@ -50,11 +54,12 @@ FILL-ME
 
 ## Open risks / assumptions
 
-<!-- Things currently believed but not yet proven. -->
+<!-- Things currently believed but not yet proven. Do not include sensitive incident details. -->
 - FILL-ME
 
 ## Last handoff
 
 - Updated: YYYY-MM-DD
 - By: human | agent/tool name
+- Branch/worktree: FILL-ME
 - Last known-good commit: FILL-ME
