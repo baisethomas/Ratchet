@@ -47,9 +47,17 @@ Ratchet is designed to keep the human at the big-picture layer:
 
 The agent, not the human, is responsible for deciding when project memory should be updated.
 
+## Project-memory safety
+
+By default, `.ratchet/STATE.md` and `.ratchet/DECISIONS.md` are intended to be committed so project memory travels with the repository. That means agents must treat them as repository-visible information: never store secrets, credentials, access tokens, personal/customer data, or sensitive security/incident details. Store sanitized references to the approved protected system instead.
+
+If the project requires private memory, gitignore `.ratchet/` or use the project's approved private store. This trades away automatic cross-clone continuity unless that private store is available to every agent.
+
+Because agents may work concurrently, they must re-read memory immediately before writing, preserve unrelated active work, and merge conflicts semantically rather than accepting one side wholesale. For simultaneous work, `STATE.md` can label active entries by branch/worktree and owner until the workstreams converge.
+
 ## Install order (35 minutes total)
 
-1. **Every active repo (15 min):** copy `AGENTS.md` to the root and fill the FILL-ME sections. Create `.ratchet/`, copy `STATE.md` and `DECISIONS.md` into it, then initialize them from the project's actual current state and already-settled decisions. Keep only context a fresh agent cannot safely infer from the repo itself.
+1. **Every active repo (15 min):** copy `AGENTS.md` to the root and fill the FILL-ME sections. Create `.ratchet/`, copy `STATE.md` and `DECISIONS.md` into it, then initialize them from the project's actual current state and already-settled decisions. Keep only sanitized context a fresh agent cannot safely infer from the repo itself.
 2. **Claude Code (1 min, if used):** copy `CLAUDE.md` to the repo root. It should remain a thin adapter that points back to `AGENTS.md`.
 3. **Hooks (10 min):** copy `drop-in/hooks/` to `.claude/hooks/` and `chmod +x` the scripts, merge `claude-code-hooks-settings.json` into `.claude/settings.json`, fill the `CHECKS` array in `check-on-stop.sh` with your real commands, and extend the destructive-command patterns for your stack. **Then run `.claude/hooks/test-hooks.sh` — a hook that silently does nothing looks exactly like a hook that works.** Verify shapes against [the current hooks docs](https://code.claude.com/docs/en/hooks); they occasionally change between releases.
 4. **Claude.ai (2 min, optional):** paste `claude-ai-project-instructions.md` into your main Project's custom instructions.
