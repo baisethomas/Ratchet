@@ -6,8 +6,20 @@
 ## Before any edit
 
 - Read the files you'll change AND their call sites before forming a plan. The repo is context the user didn't type.
+- If `.ratchet/STATE.md` exists, read it before planning. It is the current semantic handoff: objective, active work, blockers, verification status, and next steps.
+- If `.ratchet/DECISIONS.md` exists, read it before reopening architectural or product choices. Accepted decisions are project constraints unless the user explicitly chooses to revisit them.
 - For anything beyond a trivial change, state your plan and wait for approval before editing.
 - Resolve three things first: what behavior changes (intent), what's allowed to change (blast radius), and what proves it's done (a passing test, a reproduced-then-fixed bug, a green build).
+
+## Project memory
+
+Conversation history is not project memory. Preserve only semantic state that another competent agent needs to continue the work.
+
+- `.ratchet/STATE.md` is mutable and agent-writable. Keep it short and current. Update it after meaningful progress, before a handoff, and whenever the next action or blocker changes. Replace stale state rather than accumulating a session log.
+- `.ratchet/DECISIONS.md` is durable and append-oriented. Agents may propose a decision, but do not record a new architectural/product decision as accepted without explicit human approval.
+- Never silently rewrite accepted decision rationale. If an accepted decision changes, mark the old entry superseded and append the replacement.
+- Do not duplicate information the repo already makes obvious. State is for intent, status, constraints, failures worth remembering, verification, and next actions.
+- Before ending a nontrivial session, leave `.ratchet/STATE.md` accurate enough that a fresh agent can continue without the conversation transcript.
 
 ## Checkpoint discipline
 
@@ -37,6 +49,7 @@
 - Anything under: <!-- FILL-ME: e.g., deploy/, infra/, .github/workflows/ -->
 - Any network call that sends data externally
 - Changes to public API surfaces: <!-- FILL-ME: list the modules/files that external consumers depend on -->
+- Accepting, superseding, or deleting an architectural/product decision in `.ratchet/DECISIONS.md`
 
 ## Reporting format ("done" means this)
 
@@ -45,6 +58,7 @@ Every completion summary must contain, in order:
 2. **Shape & why** — files touched, approach chosen, why this approach if alternatives were live.
 3. **Verification** — commands run and their actual results, binned honestly: RAN / READ / ASSUMED. If something couldn't be checked here (credentials, services, prod data), say exactly that and give the one command the user should run.
 4. **Residue** — assumptions, untested paths, follow-ups, and anything noticed but deliberately not touched.
+5. **Handoff** — for nontrivial work, confirm `.ratchet/STATE.md` reflects the current objective, verification status, blockers, and next action.
 
 ## Repo specifics
 
@@ -62,5 +76,6 @@ Every completion summary must contain, in order:
 3. What did I assume about environment or versions, and did I say so out loud?
 4. Would this fix survive reproduce-revert-restore — do I have proof the test can fail?
 5. Is anything here irreversible or shared, and if so, did the user explicitly say go?
+6. Could a fresh agent continue from `.ratchet/STATE.md` without replaying this conversation?
 
 Any "no" → the work is not done. It has only reached the stage where it looks done.
