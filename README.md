@@ -61,6 +61,10 @@ The agent, not the human, is responsible for deciding when project memory should
 
 For nontrivial work, the session is not complete until `.ratchet/STATE.md` is accurate enough for a fresh agent to continue without the conversation transcript. Agents update current state automatically as meaningful state changes and always before handoff. Agents also record medium-impact durable decisions automatically. Only high-impact decisions escalate to the human.
 
+## Documentation sync rule
+
+`AGENTS.md`, `PLAYBOOK.md`, and the README describe the same operating model at different levels of detail. A change to the canonical workflow is incomplete until all affected documentation surfaces agree. Tool-specific adapters should never become alternate sources of truth.
+
 ## The one rule that maintains all the others
 
 When a failure gets through, don't just fix the output — add exactly one permanent thing to the system. If the failure was behavioral, add a rule, hook, test, or escalation gate. If the failure was lost project knowledge, add the missing state, constraint, or decision. Capability is what you have; process and project memory are what you keep.
