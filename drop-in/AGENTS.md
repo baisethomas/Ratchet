@@ -13,14 +13,32 @@ Tool-specific files such as CLAUDE.md should point here rather than duplicate th
 - For anything beyond a trivial change, state the plan before editing.
 - Resolve three things first: what behavior changes (intent), what's allowed to change (blast radius), and what proves it's done (passing test, reproduced-then-fixed bug, green build, or other explicit check).
 
-## Project memory
+## Project memory is part of the job
 
-- Treat `.ratchet/STATE.md` as the current semantic handoff for the project.
-- Treat `.ratchet/DECISIONS.md` as durable shared project memory.
-- Do not replay or preserve chat transcripts as project memory. Store only context a fresh competent agent cannot safely infer from the repository.
-- You may update `STATE.md` as work progresses.
-- You may propose new decisions, but do not silently add, supersede, or remove accepted decisions without explicit human approval.
-- If repository reality conflicts with state or decisions, stop and report the conflict instead of choosing one silently.
+The human should not have to manage project memory manually. Maintaining `.ratchet/STATE.md` and `.ratchet/DECISIONS.md` is part of normal agent work.
+
+### STATE.md
+
+Treat `.ratchet/STATE.md` as the current semantic handoff for the project.
+
+- Update it automatically whenever meaningful project state changes: a milestone completes, active work changes, a blocker appears or clears, verification status changes, or the next action changes.
+- Always leave it current before ending a nontrivial session or handing work to another agent.
+- Replace stale state instead of appending a session diary. It is a dashboard, not a transcript.
+- Store only context a fresh competent agent cannot safely infer from the repository.
+
+### DECISIONS.md
+
+Treat `.ratchet/DECISIONS.md` as durable shared project memory. The agent is responsible for deciding when a choice is durable enough to record.
+
+Use this autonomy ladder:
+
+- **Low impact:** routine implementation choices that are obvious from the code. Decide autonomously and do not record them unless their rationale would otherwise be lost.
+- **Medium impact:** durable technical or product choices that constrain future work but are reversible and within the task's authorized scope. Decide autonomously, record them in `DECISIONS.md`, and surface them in the completion summary.
+- **High impact:** choices with major blast radius or difficult reversal, including architecture replacement, destructive migrations, major dependency/platform changes, public API or shared-contract changes, security-sensitive policy changes, or material product-scope changes. Propose the decision and require explicit human approval before accepting or executing it.
+
+- Never silently rewrite accepted decision rationale. If a decision changes, mark the old entry superseded and append the replacement.
+- If repository reality conflicts with state or an accepted decision, stop and report the conflict instead of choosing one silently.
+- Do not preserve chat transcripts as project memory.
 
 ## Checkpoint discipline
 
@@ -51,7 +69,7 @@ Require explicit human approval before:
 - deleting files or data outside the immediate task
 - sending data to external systems when the task did not already authorize it
 - changing public API surfaces or other shared contracts
-- accepting, superseding, or removing durable decisions in `.ratchet/DECISIONS.md`
+- accepting or executing a high-impact decision as defined above
 - anything listed as project-specific hard-stop territory below
 
 ## Reporting format
@@ -62,7 +80,7 @@ Every nontrivial completion summary should contain, in order:
 2. **Shape & why** — files touched, approach chosen, and why if alternatives were live.
 3. **Verification** — what was actually run/read/assumed. Never collapse these categories.
 4. **Residue** — assumptions, untested paths, follow-ups, and deliberately untouched issues.
-5. **Handoff** — confirm `.ratchet/STATE.md` reflects the current objective, completed work, blockers, verification status, and next action.
+5. **Handoff** — confirm `.ratchet/STATE.md` is current and call out any new medium-impact decisions recorded or high-impact decisions awaiting approval.
 
 ## Repo specifics
 
@@ -80,7 +98,8 @@ Every nontrivial completion summary should contain, in order:
 2. Does the diff contain only the intended change, and can I justify every hunk?
 3. What did I assume about environment, versions, or project state, and did I state it?
 4. For a bug fix, do I have evidence the regression test can fail without the fix?
-5. Did anything irreversible, shared, or decision-level require human approval?
-6. Could a fresh agent continue from `.ratchet/STATE.md` without this conversation?
+5. Did I autonomously maintain project memory instead of leaving that work to the human?
+6. Did any high-impact choice require human approval before execution?
+7. Could a fresh agent continue from `.ratchet/STATE.md` and `.ratchet/DECISIONS.md` without this conversation?
 
 Any "no" means the work is not done yet.
