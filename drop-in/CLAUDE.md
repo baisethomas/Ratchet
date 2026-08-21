@@ -1,24 +1,21 @@
 # CLAUDE.md — Claude Code Adapter
 
 <!--
-DROP-IN: place this file at the repo root alongside AGENTS.md.
-Claude Code loads this automatically. Ratchet's canonical operating contract lives in AGENTS.md.
-Keep this file Claude-specific so universal rules do not drift across tool adapters.
+DROP-IN: place this file at the repo root when using Claude Code.
+AGENTS.md is the canonical model-agnostic operating contract. Do not duplicate those rules here.
 -->
 
-## Canonical contract
-
-Read and follow `AGENTS.md` before doing any repository work. If this file conflicts with `AGENTS.md`, `AGENTS.md` wins unless the human explicitly says otherwise.
+Before doing any work, read and follow `AGENTS.md` in full. Its rules govern planning, verification, scope, project-memory maintenance, decision autonomy, hard stops, reporting, and handoff.
 
 ## Claude Code specifics
 
 - Use plan mode for nontrivial work when available.
-- Respect configured Claude Code hooks and stop-hook failures. Do not bypass or disable them to manufacture a green result.
-- Load `.ratchet/STATE.md` and `.ratchet/DECISIONS.md` as required by `AGENTS.md` before planning.
-- When a hook, permission boundary, or environment limitation prevents verification, report the exact blocked check instead of inferring success.
-- Do not add universal workflow rules here. Put model-agnostic operating rules in `AGENTS.md` so Codex, Cursor, Claude, and future agents share one contract.
+- Respect configured `.claude/` hooks and never bypass a failing stop/check hook merely to complete the task.
+- Read `.ratchet/STATE.md` and `.ratchet/DECISIONS.md` through the workflow defined in `AGENTS.md`.
+- Maintain project memory autonomously according to the low/medium/high impact thresholds in `AGENTS.md`.
+- Treat any conflict between this file and `AGENTS.md` as a configuration error. `AGENTS.md` wins; report the conflict.
 
-## Claude-specific project notes
+## Repo-specific Claude notes
 
-<!-- FILL-ME only when this repository has Claude Code-specific behavior, tooling, or limitations. -->
-- FILL-ME or delete this section if none.
+<!-- FILL-ME only with behavior genuinely specific to Claude Code. Universal repo rules belong in AGENTS.md. -->
+- FILL-ME
