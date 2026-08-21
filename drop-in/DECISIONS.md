@@ -10,6 +10,8 @@ SAFETY: Never record secrets, credentials, access tokens, personal/customer data
 
 GIT INTEGRATION: Parallel branches may add decisions independently. Do not invent live synchronization. At merge/integration, preserve compatible decisions from both sides and explicitly resolve true conflicts. Never silently drop an accepted or proposed decision from another branch.
 
+Use branch-friendly decision IDs so parallel additions do not routinely collide. Preferred format: `D-YYYYMMDD-HHMM-short-slug` using UTC when available (for example `D-20260821-0615-shared-review-core`). If an ID collision still occurs, preserve both entries and rename one during integration; identity is not authority.
+
 Autonomy rule:
 - Low-impact implementation choices usually stay in code and do not need an entry.
 - Medium-impact durable choices may be decided and recorded by the agent, then surfaced in the completion summary.
@@ -20,7 +22,7 @@ Do not record routine implementation choices that are obvious from the code. Do 
 
 ## Decision format
 
-### D001 — FILL-ME: short decision title
+### D-YYYYMMDD-HHMM-short-slug — FILL-ME: short decision title
 
 - **Status:** accepted | proposed | superseded
 - **Impact:** low | medium | high
