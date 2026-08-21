@@ -27,12 +27,19 @@ Treat committed Ratchet memory as repository-visible information.
 
 ### Concurrent memory updates
 
-Project memory is shared mutable state. Before writing either memory file:
+Project memory is shared mutable state. Memory writes are single-writer operations across all worktrees that share the same Git repository.
 
-- Re-read the latest version immediately before the edit.
-- Preserve unrelated active work, blockers, verification, and decisions added by other agents or branches.
-- Merge semantically instead of accepting either side wholesale when conflicts occur.
+Before modifying `.ratchet/STATE.md` or `.ratchet/DECISIONS.md`:
+
+1. Acquire a repository-wide memory lock in the Git common directory, not inside an individual worktree. On POSIX systems, the required primitive is an atomic directory creation such as `mkdir "$(git rev-parse --git-common-dir)/ratchet-memory.lock"`. If the lock already exists, wait rather than writing around it. Other platforms must use an equivalent atomic exclusive lock.
+2. After the lock is acquired, re-read both memory files. Any read performed before lock acquisition is advisory only.
+3. Merge the intended update with the now-current contents. Preserve unrelated active work, blockers, verification, and accepted decisions.
+4. Write the merged result, then re-read the written file to confirm the intended state is present.
+5. Release the lock immediately after the memory write completes. Use cleanup/trap behavior so normal failures do not strand the lock.
+
+- Never delete a lock merely because it exists. A stale lock may be removed only after confirming its owning process/session is no longer active, or with explicit human approval when ownership cannot be established.
 - If two active workstreams cannot be represented safely in one `STATE.md`, label entries with branch/worktree and owner until they converge.
+- If a memory merge cannot be performed confidently, stop and report the conflict instead of choosing a winner.
 - Never resolve a memory conflict by silently discarding another agent's state.
 
 ### STATE.md
@@ -118,7 +125,7 @@ Every nontrivial completion summary should contain, in order:
 4. For a bug fix, do I have evidence the regression test can fail without the fix?
 5. Did I autonomously maintain project memory instead of leaving that work to the human?
 6. Did I keep sensitive information out of durable project memory?
-7. Did I re-read and merge shared memory instead of overwriting concurrent state?
+7. Did I acquire the repository-wide memory lock, re-read after locking, merge, verify, and release it before changing shared memory?
 8. Did any high-impact choice require human approval before execution?
 9. Could a fresh agent continue from `.ratchet/STATE.md` and `.ratchet/DECISIONS.md` without this conversation?
 
