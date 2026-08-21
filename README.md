@@ -53,7 +53,9 @@ By default, `.ratchet/STATE.md` and `.ratchet/DECISIONS.md` are intended to be c
 
 If the project requires private memory, gitignore `.ratchet/` or use the project's approved private store. This trades away automatic cross-clone continuity unless that private store is available to every agent.
 
-Because agents may work concurrently, they must re-read memory immediately before writing, preserve unrelated active work, and merge conflicts semantically rather than accepting one side wholesale. For simultaneous work, `STATE.md` can label active entries by branch/worktree and owner until the workstreams converge.
+Because agents may work concurrently, memory writes are serialized across worktrees. Before changing `STATE.md` or `DECISIONS.md`, an agent acquires an exclusive repository-wide lock under the Git common directory, re-reads memory only after the lock is held, merges the intended update with the current state, writes and verifies it, then releases the lock. On POSIX systems the lock may be implemented with atomic directory creation such as `mkdir "$(git rev-parse --git-common-dir)/ratchet-memory.lock"`; other platforms should use an equivalent exclusive primitive. Agents wait on an existing lock rather than writing around it.
+
+A lock is never removed merely because it appears old. Its owner must be confirmed inactive first, or a human must approve removal when ownership cannot be established. For simultaneous work, `STATE.md` can still label active entries by branch/worktree and owner until workstreams converge.
 
 ## Install order (35 minutes total)
 
