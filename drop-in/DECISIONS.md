@@ -8,7 +8,7 @@ Unlike STATE.md, this file is append-oriented. The agent owns maintaining it. Re
 
 SAFETY: Never record secrets, credentials, access tokens, personal/customer data, or sensitive security/incident details. Use sanitized references to the approved protected system instead.
 
-CONCURRENCY: Re-read this file immediately before writing. Preserve decisions added elsewhere, append rather than overwrite, and resolve conflicts explicitly. Never silently drop another branch's accepted or proposed decision.
+GIT INTEGRATION: Parallel branches may add decisions independently. Do not invent live synchronization. At merge/integration, preserve compatible decisions from both sides and explicitly resolve true conflicts. Never silently drop an accepted or proposed decision from another branch.
 
 Autonomy rule:
 - Low-impact implementation choices usually stay in code and do not need an entry.
@@ -41,4 +41,5 @@ Append durable decisions below.
 Medium-impact decisions can be accepted autonomously by the agent when they are reversible and within authorized scope.
 High-impact decisions remain proposed until a human approves them.
 If an accepted decision changes, mark the old entry superseded and add a new decision that references it.
+At branch integration, preserve compatible entries from all sides; escalate materially conflicting accepted decisions instead of choosing silently.
 -->

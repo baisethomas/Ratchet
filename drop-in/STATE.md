@@ -2,34 +2,34 @@
 
 <!--
 DROP-IN: copy this file to `.ratchet/STATE.md` in the target repository.
-This is the project's mutable semantic handoff. Keep it short, current, and factual.
-Agents may update this file as work progresses.
+This is the semantic handoff for the current branch/workstream. Keep it short, current, and factual.
+Agents update it as meaningful workstream state changes and before handoff.
 
 SAFETY: Never record secrets, credentials, access tokens, personal/customer data, or sensitive security/incident details here. Use sanitized references to the approved protected system instead.
 
-CONCURRENCY: Re-read this file immediately before writing. Preserve unrelated active work from other agents/branches and merge conflicts semantically. Never discard another agent's current state silently.
+SCOPE: This file is not a globally synchronized live database. Different branches/worktrees may legitimately carry different state until Git integration reconciles them.
 
-Do not turn this into a session transcript. Preserve only the state another competent agent needs to continue without replaying prior conversations.
+Do not turn this into a session transcript. Preserve only the state another competent agent needs to continue this branch/workstream without replaying prior conversations.
 -->
 
 ## Objective
 
-<!-- What outcome is the project currently driving toward? -->
+<!-- What outcome is this branch/workstream currently driving toward? -->
 FILL-ME
 
 ## Current phase
 
-<!-- The smallest useful label for where the project is now. -->
+<!-- The smallest useful label for where this workstream is now. -->
 FILL-ME
 
 ## Completed
 
-<!-- Durable milestones only. Delete stale detail instead of accumulating history here. -->
+<!-- Durable milestones for this workstream only. Delete stale detail instead of accumulating history here. -->
 - FILL-ME
 
 ## Working on
 
-<!-- What is actively in flight right now? For simultaneous work, include branch/worktree and owner. -->
+<!-- What is actively in flight on this branch/workstream right now? -->
 - FILL-ME
 
 ## Next
@@ -55,6 +55,11 @@ FILL-ME
 ## Open risks / assumptions
 
 <!-- Things currently believed but not yet proven. Do not include sensitive incident details. -->
+- FILL-ME
+
+## Integration note
+
+<!-- When this branch is merged, reconcile this file against the resulting code/tests and target-branch state. Git is the integration mechanism. -->
 - FILL-ME
 
 ## Last handoff

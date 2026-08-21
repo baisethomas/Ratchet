@@ -6,9 +6,20 @@ This is Ratchet's model-agnostic operating contract. Any coding agent entering t
 Tool-specific files such as CLAUDE.md should point here rather than duplicate these rules.
 -->
 
+## Ratchet invariants
+
+1. **Model independence.** A fresh agent must be able to work without knowing which model worked previously.
+2. **Human is not the memory bus.** Routine handoff context belongs in the repo, not in the user's head.
+3. **Memory stays small.** Never store chat transcripts or duplicate facts that are safely inferable from code, tests, Git history, or linked protected systems.
+4. **Git owns integration truth.** Ratchet does not create a second live synchronization system beside Git. Branches/worktrees may carry different current state until they are integrated.
+5. **Durable decisions survive handoffs.** Accepted rationale is never silently deleted or rewritten.
+6. **Agents cannot silently expand authority.** Shared-state, irreversible, or high-impact actions still require the appropriate human gate.
+7. **Sensitive information never becomes durable project memory.** Store sanitized references, not secrets or protected data.
+
 ## Before any edit
 
 - Read `.ratchet/STATE.md` and `.ratchet/DECISIONS.md` if they exist before planning.
+- Treat `STATE.md` as the current state of this branch/workstream, not guaranteed global state across every branch or clone.
 - Read the files you'll change AND their call sites before forming a plan. The repo is context the user didn't type.
 - For anything beyond a trivial change, state the plan before editing.
 - Resolve three things first: what behavior changes (intent), what's allowed to change (blast radius), and what proves it's done (passing test, reproduced-then-fixed bug, green build, or other explicit check).
@@ -25,31 +36,16 @@ Treat committed Ratchet memory as repository-visible information.
 - Record only sanitized facts and references. Point to the approved secret manager, incident system, ticket, or other protected source without copying sensitive contents.
 - If project memory itself must remain private, use a gitignored local `.ratchet/` or the project's approved private store instead of committing it. State clearly that cross-clone/agent continuity is then reduced unless that private store is shared.
 
-### Concurrent memory updates
-
-Project memory is shared mutable state. Memory writes are single-writer operations across all worktrees that share the same Git repository.
-
-Before modifying `.ratchet/STATE.md` or `.ratchet/DECISIONS.md`:
-
-1. Acquire a repository-wide memory lock in the Git common directory, not inside an individual worktree. On POSIX systems, the required primitive is an atomic directory creation such as `mkdir "$(git rev-parse --git-common-dir)/ratchet-memory.lock"`. If the lock already exists, wait rather than writing around it. Other platforms must use an equivalent atomic exclusive lock.
-2. After the lock is acquired, re-read both memory files. Any read performed before lock acquisition is advisory only.
-3. Merge the intended update with the now-current contents. Preserve unrelated active work, blockers, verification, and accepted decisions.
-4. Write the merged result, then re-read the written file to confirm the intended state is present.
-5. Release the lock immediately after the memory write completes. Use cleanup/trap behavior so normal failures do not strand the lock.
-
-- Never delete a lock merely because it exists. A stale lock may be removed only after confirming its owning process/session is no longer active, or with explicit human approval when ownership cannot be established.
-- If two active workstreams cannot be represented safely in one `STATE.md`, label entries with branch/worktree and owner until they converge.
-- If a memory merge cannot be performed confidently, stop and report the conflict instead of choosing a winner.
-- Never resolve a memory conflict by silently discarding another agent's state.
-
 ### STATE.md
 
-Treat `.ratchet/STATE.md` as the current semantic handoff for the project.
+Treat `.ratchet/STATE.md` as the semantic handoff for the current branch/workstream.
 
-- Update it automatically whenever meaningful project state changes: a milestone completes, active work changes, a blocker appears or clears, verification status changes, or the next action changes.
-- Always leave it current before ending a nontrivial session or handing work to another agent.
-- Replace stale state instead of appending a session diary, while preserving unrelated concurrent work. It is a dashboard, not a transcript.
+- Update it automatically whenever meaningful workstream state changes: a milestone completes, active work changes, a blocker appears or clears, verification status changes, or the next action changes.
+- Always leave it current before ending a nontrivial session or handing the branch/workstream to another agent.
+- Replace stale state instead of appending a session diary. It is a dashboard, not a transcript.
 - Store only context a fresh competent agent cannot safely infer from the repository.
+- Do not attempt live cross-branch or cross-clone synchronization. Git is the integration mechanism.
+- When integrating branches, reconcile `STATE.md` against the resulting code and tests, then write one clean post-integration state. If incoming state conflicts with repository reality, trust verified repository reality and repair the state.
 
 ### DECISIONS.md
 
@@ -59,10 +55,12 @@ Use this autonomy ladder:
 
 - **Low impact:** routine implementation choices that are obvious from the code. Decide autonomously and do not record them unless their rationale would otherwise be lost.
 - **Medium impact:** durable technical or product choices that constrain future work but are reversible and within the task's authorized scope. Decide autonomously, record them in `DECISIONS.md`, and surface them in the completion summary.
-- **High impact:** choices with major blast radius or difficult reversal, including architecture replacement, destructive migrations, major dependency/platform changes, public API or shared-contract changes, security-sensitive policy changes, or material product-scope changes. Propose the decision and require explicit human approval before accepting or executing it.
+- **High impact:** choices with major blast radius or difficult reversal, including architecture replacement, destructive data changes, major dependency/platform changes, public API or shared-contract changes, security-sensitive policy changes, or material product-scope changes. Propose the decision and require explicit human approval before accepting or executing it.
 
-- Never silently rewrite accepted decision rationale. If a decision changes, mark the old entry superseded and append the replacement.
-- If repository reality conflicts with state or an accepted decision, stop and report the conflict instead of choosing one silently.
+- Append durable decisions; never silently rewrite accepted rationale.
+- Parallel branches may add decisions independently. At integration, preserve compatible decisions from both sides. If accepted decisions conflict materially, stop and escalate rather than choosing silently.
+- If a decision changes, mark the old entry superseded and append the replacement.
+- If repository reality conflicts with an accepted decision, stop and report the conflict instead of choosing one silently.
 - Do not preserve chat transcripts as project memory.
 
 ## Checkpoint discipline
@@ -89,7 +87,8 @@ Use this autonomy ladder:
 
 Require explicit human approval before:
 
-- destructive database migrations or irreversible data changes
+- creating, modifying, or executing database migrations that may affect a shared environment
+- irreversible data changes
 - force pushes, history rewrites, branch deletion, or destructive git operations
 - deleting files or data outside the immediate task
 - sending data to external systems when the task did not already authorize it
@@ -105,7 +104,7 @@ Every nontrivial completion summary should contain, in order:
 2. **Shape & why** — files touched, approach chosen, and why if alternatives were live.
 3. **Verification** — what was actually run/read/assumed. Never collapse these categories.
 4. **Residue** — assumptions, untested paths, follow-ups, and deliberately untouched issues.
-5. **Handoff** — confirm `.ratchet/STATE.md` is current and call out any new medium-impact decisions recorded or high-impact decisions awaiting approval.
+5. **Handoff** — confirm `.ratchet/STATE.md` is current for this branch/workstream and call out any new medium-impact decisions recorded or high-impact decisions awaiting approval.
 
 ## Repo specifics
 
@@ -123,10 +122,10 @@ Every nontrivial completion summary should contain, in order:
 2. Does the diff contain only the intended change, and can I justify every hunk?
 3. What did I assume about environment, versions, or project state, and did I state it?
 4. For a bug fix, do I have evidence the regression test can fail without the fix?
-5. Did I autonomously maintain project memory instead of leaving that work to the human?
+5. Did I autonomously maintain branch/workstream state instead of leaving that work to the human?
 6. Did I keep sensitive information out of durable project memory?
-7. Did I acquire the repository-wide memory lock, re-read after locking, merge, verify, and release it before changing shared memory?
-8. Did any high-impact choice require human approval before execution?
-9. Could a fresh agent continue from `.ratchet/STATE.md` and `.ratchet/DECISIONS.md` without this conversation?
+7. Did I avoid pretending branch-local state is globally synchronized state?
+8. Did any migration, shared-state action, irreversible action, or high-impact choice require human approval before execution?
+9. Could a fresh agent continue this branch/workstream from `.ratchet/STATE.md` and `.ratchet/DECISIONS.md` without this conversation?
 
 Any "no" means the work is not done yet.
