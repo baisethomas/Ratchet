@@ -17,13 +17,31 @@ Tool-specific files such as CLAUDE.md should point here rather than duplicate th
 
 The human should not have to manage project memory manually. Maintaining `.ratchet/STATE.md` and `.ratchet/DECISIONS.md` is part of normal agent work.
 
+### Memory safety
+
+Treat committed Ratchet memory as repository-visible information.
+
+- Never write secrets, credentials, access tokens, private keys, personal/customer data, or sensitive security/incident details into Ratchet memory.
+- Record only sanitized facts and references. Point to the approved secret manager, incident system, ticket, or other protected source without copying sensitive contents.
+- If project memory itself must remain private, use a gitignored local `.ratchet/` or the project's approved private store instead of committing it. State clearly that cross-clone/agent continuity is then reduced unless that private store is shared.
+
+### Concurrent memory updates
+
+Project memory is shared mutable state. Before writing either memory file:
+
+- Re-read the latest version immediately before the edit.
+- Preserve unrelated active work, blockers, verification, and decisions added by other agents or branches.
+- Merge semantically instead of accepting either side wholesale when conflicts occur.
+- If two active workstreams cannot be represented safely in one `STATE.md`, label entries with branch/worktree and owner until they converge.
+- Never resolve a memory conflict by silently discarding another agent's state.
+
 ### STATE.md
 
 Treat `.ratchet/STATE.md` as the current semantic handoff for the project.
 
 - Update it automatically whenever meaningful project state changes: a milestone completes, active work changes, a blocker appears or clears, verification status changes, or the next action changes.
 - Always leave it current before ending a nontrivial session or handing work to another agent.
-- Replace stale state instead of appending a session diary. It is a dashboard, not a transcript.
+- Replace stale state instead of appending a session diary, while preserving unrelated concurrent work. It is a dashboard, not a transcript.
 - Store only context a fresh competent agent cannot safely infer from the repository.
 
 ### DECISIONS.md
@@ -99,7 +117,9 @@ Every nontrivial completion summary should contain, in order:
 3. What did I assume about environment, versions, or project state, and did I state it?
 4. For a bug fix, do I have evidence the regression test can fail without the fix?
 5. Did I autonomously maintain project memory instead of leaving that work to the human?
-6. Did any high-impact choice require human approval before execution?
-7. Could a fresh agent continue from `.ratchet/STATE.md` and `.ratchet/DECISIONS.md` without this conversation?
+6. Did I keep sensitive information out of durable project memory?
+7. Did I re-read and merge shared memory instead of overwriting concurrent state?
+8. Did any high-impact choice require human approval before execution?
+9. Could a fresh agent continue from `.ratchet/STATE.md` and `.ratchet/DECISIONS.md` without this conversation?
 
 Any "no" means the work is not done yet.
