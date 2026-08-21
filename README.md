@@ -6,12 +6,16 @@ Everything needed to run the craft — with any model — as drop-in files. Noth
 
 **Why "Ratchet":** the mechanism that only turns one way. The model's ceiling is fixed; the system's isn't. Every failure that escapes produces one permanent addition to the process — a rule, a hook, a test, an escalation gate — and the system never slips backward.
 
+Ratchet treats the repository as the durable source of truth. Conversation history is disposable; project state and accepted decisions are not. A fresh agent should be able to enter the repo, recover the current objective and constraints, do verifiable work, and leave a clean handoff for the next agent without replaying prior chats.
+
 ## What's in the box
 
 | File | What it is | Where it goes |
 |---|---|---|
 | `PLAYBOOK.md` | The full manual: chat craft, code craft, and the compensation layer | Read it once; keep it as the reference |
-| `drop-in/CLAUDE.md` | Repo working-rules template (checkpoints, verification, hard stops, reporting format) | Repo root of every project. Fill the `FILL-ME` sections |
+| `drop-in/CLAUDE.md` | Repo working-rules template (project memory, checkpoints, verification, hard stops, reporting format) | Repo root of every project. Fill the `FILL-ME` sections |
+| `drop-in/STATE.md` | Mutable semantic handoff: objective, current phase, active work, blockers, verification, risks, and next actions | Copy to `.ratchet/STATE.md` in each active repo; agents keep it current |
+| `drop-in/DECISIONS.md` | Append-oriented decision ledger: accepted choices, rationale, alternatives, consequences, and revisit conditions | Copy to `.ratchet/DECISIONS.md`; agents may propose, humans approve accepted decisions |
 | `drop-in/claude-ai-project-instructions.md` | ~180-word epistemics core | Claude.ai → Project → Custom instructions (or Settings → Preferences for account-wide) |
 | `drop-in/api-system-prompt.txt` | Reliability rules + optional second-pass reviewer prompt | Appended to the system prompt of any API-powered app |
 | `drop-in/review-prompts.md` | 8 copy-paste prompts: adversarial review, re-derivation, fresh-context adversary, decomposition assist, hostile diff review, reproduce-revert-restore, honest summary, plan-first leash | Keep open in a tab; paste as needed |
@@ -22,15 +26,29 @@ Everything needed to run the craft — with any model — as drop-in files. Noth
 | `drop-in/pipeline-skeleton.py` | A graduated workflow in plain Python: draft → review → conditional revise loop (capped) → done/escalate. Generic — swap the three prompt constants for any recurring task | Copy into the app's repo; prove the gate can fail before trusting it |
 | `drop-in/test_pipeline_skeleton.py` | 15 cases for the review gate — conflicting, qualified, non-final, and empty verdicts must all reach a human | Copy alongside the skeleton; run it after changing the gate |
 
-## Install order (30 minutes total)
+## The three layers
+
+Ratchet separates three failure classes instead of asking model capability to cover all of them:
+
+1. **Behavior** — `CLAUDE.md`, prompts, and explicit human gates tell the agent how to work.
+2. **State** — `.ratchet/STATE.md` and `.ratchet/DECISIONS.md` tell a fresh agent what the project currently knows and why settled choices were made.
+3. **Verification** — hooks, tests, adversarial review, and the done audit prove the work instead of trusting the model's confidence.
+
+`STATE.md` is deliberately small and mutable. `DECISIONS.md` is deliberately durable and human-governed. Neither is a transcript store. The goal is semantic continuity with minimal context and token cost.
+
+## Install order (35 minutes total)
 
 1. **Claude.ai (2 min):** paste `claude-ai-project-instructions.md` into your main Project's custom instructions.
-2. **Each active repo (10 min):** copy `CLAUDE.md` to the root, fill the FILL-ME sections — especially the single check command and the hard-stop paths.
+2. **Each active repo (15 min):** copy `CLAUDE.md` to the root and fill the FILL-ME sections. Create `.ratchet/`, copy `STATE.md` and `DECISIONS.md` into it, then initialize them from the project's actual current state and already-settled decisions. Keep only context a fresh agent cannot safely infer from the repo itself.
 3. **Hooks (10 min):** copy `drop-in/hooks/` to `.claude/hooks/` and `chmod +x` the scripts, merge `claude-code-hooks-settings.json` into `.claude/settings.json`, fill the `CHECKS` array in `check-on-stop.sh` with your real commands, and extend the destructive-command patterns for your stack. **Then run `.claude/hooks/test-hooks.sh` — a hook that silently does nothing looks exactly like a hook that works.** Verify shapes against [the current hooks docs](https://code.claude.com/docs/en/hooks); they occasionally change between releases.
 4. **API apps (5 min):** append `api-system-prompt.txt` to each app's system prompt. For any app producing final deliverables, wire the optional second-pass reviewer as a second API call.
 5. **You (3 min):** read `done-audit-checklist.md` once; use it on the next three completions until it's reflex.
 6. **Later, as needed:** when any workflow has run ~3+ times with the same shape, apply `graduation-rule.md` — promote it to a pipeline using `pipeline-skeleton.py` as the starting point.
 
+## Handoff rule
+
+For nontrivial work, the session is not complete until `.ratchet/STATE.md` is accurate enough for a fresh agent to continue without the conversation transcript. Update current state freely. Treat accepted decisions as shared project state: propose them as needed, but require human approval before adding, superseding, or removing them.
+
 ## The one rule that maintains all the others
 
-When a failure gets through, don't just fix the output — add exactly one permanent thing to the system (a CLAUDE.md line, a hook, a test, an escalation rule). Capability is what you have; process is what you keep.
+When a failure gets through, don't just fix the output — add exactly one permanent thing to the system. If the failure was behavioral, add a rule, hook, test, or escalation gate. If the failure was lost project knowledge, add the missing state, constraint, or approved decision. Capability is what you have; process and project memory are what you keep.
