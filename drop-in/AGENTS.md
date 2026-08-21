@@ -87,14 +87,16 @@ Use this autonomy ladder:
 
 Require explicit human approval before:
 
-- creating, modifying, or executing database migrations that may affect a shared environment
+- creating, modifying, or executing any database migration
 - irreversible data changes
 - force pushes, history rewrites, branch deletion, or destructive git operations
 - deleting files or data outside the immediate task
-- sending data to external systems when the task did not already authorize it
+- sending data to external systems
 - changing public API surfaces or other shared contracts
 - accepting or executing a high-impact decision as defined above
 - anything listed as project-specific hard-stop territory below
+
+The guard hooks intentionally enforce some of these categories more conservatively than prose alone. If a guarded action is genuinely approved, the human performs or explicitly bypasses the guard; agents must not invent self-approval mechanisms.
 
 ## Reporting format
 
@@ -125,7 +127,7 @@ Every nontrivial completion summary should contain, in order:
 5. Did I autonomously maintain branch/workstream state instead of leaving that work to the human?
 6. Did I keep sensitive information out of durable project memory?
 7. Did I avoid pretending branch-local state is globally synchronized state?
-8. Did any migration, shared-state action, irreversible action, or high-impact choice require human approval before execution?
+8. Did any migration, external send, shared-state action, irreversible action, or high-impact choice require human approval before execution?
 9. Could a fresh agent continue this branch/workstream from `.ratchet/STATE.md` and `.ratchet/DECISIONS.md` without this conversation?
 
 Any "no" means the work is not done yet.
