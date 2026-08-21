@@ -4,26 +4,37 @@
 DROP-IN: copy this file to `.ratchet/DECISIONS.md` in the target repository.
 This is durable project memory: decisions that future agents should not reopen accidentally.
 
-Unlike STATE.md, this file is append-oriented. Agents may propose decisions, but accepted architectural/product decisions should require human approval before being recorded as settled.
+Unlike STATE.md, this file is append-oriented. The agent owns maintaining it. Record durable choices when their rationale would otherwise be lost and future work would be constrained by them.
 
-Do not record routine implementation choices that are obvious from the code. Record decisions whose rationale would otherwise be lost and rediscovered.
+Autonomy rule:
+- Low-impact implementation choices usually stay in code and do not need an entry.
+- Medium-impact durable choices may be decided and recorded by the agent, then surfaced in the completion summary.
+- High-impact choices require explicit human approval before they are accepted or executed.
+
+Do not record routine implementation choices that are obvious from the code. Do not silently rewrite prior rationale.
 -->
 
 ## Decision format
 
 ### D001 — FILL-ME: short decision title
 
-- **Status:** proposed | accepted | superseded
+- **Status:** accepted | proposed | superseded
+- **Impact:** low | medium | high
 - **Date:** YYYY-MM-DD
 - **Decision:** FILL-ME
 - **Why:** FILL-ME
 - **Rejected / alternatives:** FILL-ME
 - **Consequences:** FILL-ME
 - **Revisit when:** FILL-ME
-- **Approved by:** FILL-ME
+- **Approved by:** agent | human name/role
 
 ---
 
 ## Decisions
 
-<!-- Append accepted decisions below. Never silently rewrite old rationale. If a decision changes, mark the old entry superseded and add a new decision that references it. -->
+<!--
+Append durable decisions below.
+Medium-impact decisions can be accepted autonomously by the agent when they are reversible and within authorized scope.
+High-impact decisions remain proposed until a human approves them.
+If an accepted decision changes, mark the old entry superseded and add a new decision that references it.
+-->
