@@ -13,7 +13,8 @@ Ratchet treats the repository as the durable source of truth. Conversation histo
 | File | What it is | Where it goes |
 |---|---|---|
 | `PLAYBOOK.md` | The full manual: chat craft, code craft, and the compensation layer | Read it once; keep it as the reference |
-| `drop-in/CLAUDE.md` | Repo working-rules template (project memory, checkpoints, verification, hard stops, reporting format) | Repo root of every project. Fill the `FILL-ME` sections |
+| `drop-in/AGENTS.md` | Canonical, model-agnostic repo operating contract | Copy to the repo root of every project. Fill the `FILL-ME` sections |
+| `drop-in/CLAUDE.md` | Thin Claude Code adapter that points to `AGENTS.md` and adds Claude-specific behavior only | Copy to the repo root when using Claude Code |
 | `drop-in/STATE.md` | Mutable semantic handoff: objective, current phase, active work, blockers, verification, risks, and next actions | Copy to `.ratchet/STATE.md` in each active repo; agents keep it current |
 | `drop-in/DECISIONS.md` | Append-oriented decision ledger: accepted choices, rationale, alternatives, consequences, and revisit conditions | Copy to `.ratchet/DECISIONS.md`; agents may propose, humans approve accepted decisions |
 | `drop-in/claude-ai-project-instructions.md` | ~180-word epistemics core | Claude.ai → Project → Custom instructions (or Settings → Preferences for account-wide) |
@@ -30,7 +31,7 @@ Ratchet treats the repository as the durable source of truth. Conversation histo
 
 Ratchet separates three failure classes instead of asking model capability to cover all of them:
 
-1. **Behavior** — `CLAUDE.md`, prompts, and explicit human gates tell the agent how to work.
+1. **Behavior** — `AGENTS.md` is the canonical operating contract. Tool-specific adapters such as `CLAUDE.md` point to it instead of duplicating universal rules.
 2. **State** — `.ratchet/STATE.md` and `.ratchet/DECISIONS.md` tell a fresh agent what the project currently knows and why settled choices were made.
 3. **Verification** — hooks, tests, adversarial review, and the done audit prove the work instead of trusting the model's confidence.
 
@@ -38,12 +39,13 @@ Ratchet separates three failure classes instead of asking model capability to co
 
 ## Install order (35 minutes total)
 
-1. **Claude.ai (2 min):** paste `claude-ai-project-instructions.md` into your main Project's custom instructions.
-2. **Each active repo (15 min):** copy `CLAUDE.md` to the root and fill the FILL-ME sections. Create `.ratchet/`, copy `STATE.md` and `DECISIONS.md` into it, then initialize them from the project's actual current state and already-settled decisions. Keep only context a fresh agent cannot safely infer from the repo itself.
+1. **Every active repo (15 min):** copy `AGENTS.md` to the root and fill the FILL-ME sections. Create `.ratchet/`, copy `STATE.md` and `DECISIONS.md` into it, then initialize them from the project's actual current state and already-settled decisions. Keep only context a fresh agent cannot safely infer from the repo itself.
+2. **Claude Code (1 min, if used):** copy `CLAUDE.md` to the repo root. It should remain a thin adapter that points back to `AGENTS.md`.
 3. **Hooks (10 min):** copy `drop-in/hooks/` to `.claude/hooks/` and `chmod +x` the scripts, merge `claude-code-hooks-settings.json` into `.claude/settings.json`, fill the `CHECKS` array in `check-on-stop.sh` with your real commands, and extend the destructive-command patterns for your stack. **Then run `.claude/hooks/test-hooks.sh` — a hook that silently does nothing looks exactly like a hook that works.** Verify shapes against [the current hooks docs](https://code.claude.com/docs/en/hooks); they occasionally change between releases.
-4. **API apps (5 min):** append `api-system-prompt.txt` to each app's system prompt. For any app producing final deliverables, wire the optional second-pass reviewer as a second API call.
-5. **You (3 min):** read `done-audit-checklist.md` once; use it on the next three completions until it's reflex.
-6. **Later, as needed:** when any workflow has run ~3+ times with the same shape, apply `graduation-rule.md` — promote it to a pipeline using `pipeline-skeleton.py` as the starting point.
+4. **Claude.ai (2 min, optional):** paste `claude-ai-project-instructions.md` into your main Project's custom instructions.
+5. **API apps (5 min):** append `api-system-prompt.txt` to each app's system prompt. For any app producing final deliverables, wire the optional second-pass reviewer as a second API call.
+6. **You (3 min):** read `done-audit-checklist.md` once; use it on the next three completions until it's reflex.
+7. **Later, as needed:** when any workflow has run ~3+ times with the same shape, apply `graduation-rule.md` — promote it to a pipeline using `pipeline-skeleton.py` as the starting point.
 
 ## Handoff rule
 
