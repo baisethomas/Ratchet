@@ -57,7 +57,10 @@ root="$(cd "$(git -C "$to" rev-parse --show-toplevel)" && pwd -P)" || die "could
 # single file is written. An out-of-date or partial checkout otherwise "succeeds" while
 # leaving the repo without its skills or its guards.
 need=("AGENTS.md" "STATE.md" "DECISIONS.md" "skills/")
-[ "$claude" -eq 1 ] && need+=("CLAUDE.md" "hooks/")
+# The hooks are one unit: the three scripts source lib-payload.sh and the settings block
+# names each of them, so a partial set is a guard that silently does nothing.
+[ "$claude" -eq 1 ] && need+=("CLAUDE.md" "hooks/check-on-stop.sh" "hooks/guard-destructive.sh" \
+  "hooks/lint-edited-file.sh" "hooks/lib-payload.sh" "hooks/test-hooks.sh")
 [ "$codex" -eq 1 ] && need+=("CODEX.md")
 absent=""
 for n in "${need[@]}"; do
@@ -65,6 +68,12 @@ for n in "${need[@]}"; do
     */) { [ -d "$from/$n" ] && [ -n "$(find "$from/$n" -type f | head -n 1)" ]; } || absent="$absent $n" ;;
     *) [ -f "$from/$n" ] && [ -r "$from/$n" ] || absent="$absent $n" ;;
   esac
+done
+# Skills are not listed by name, on purpose: the set grows, and an older checkout with
+# fewer skills is a legitimate source. Each skill folder must at least be a skill.
+for d in "$from"/skills/*/; do
+  [ -d "$d" ] || continue
+  [ -f "${d}SKILL.md" ] || absent="$absent skills/$(basename "$d")/SKILL.md"
 done
 [ -z "$absent" ] || die "the source $from is missing:$absent — is the Ratchet checkout up to date? Nothing was written"
 

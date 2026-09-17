@@ -106,6 +106,16 @@ for missing in skills hooks CLAUDE.md CODEX.md STATE.md; do
   out="$("$install" --from "$src" --to "$repo" --claude --codex 2>&1)"; code=$?
   [ "$code" -eq 2 ] && [ "$(snapshot "$repo")" = "$before" ] && printf '%s' "$out" | grep -q "$missing" && ok || no "source missing $missing: expected exit 2, the name in the message, and an untouched repo; got exit $code"
 done
+for missing in hooks/guard-destructive.sh hooks/lib-payload.sh skills/ratchet-done/SKILL.md; do
+  new_repo
+  src="$sandbox/src.partial"; rm -rf "$src"; cp -R "$dropin" "$src"; rm -f "$src/$missing"
+  before="$(snapshot "$repo")"
+  out="$("$install" --from "$src" --to "$repo" --claude 2>&1)"; code=$?
+  [ "$code" -eq 2 ] && [ "$(snapshot "$repo")" = "$before" ] && printf '%s' "$out" | grep -q "$missing" && ok || no "source missing $missing: expected exit 2, the name in the message, and an untouched repo; got exit $code"
+done
+new_repo
+src="$sandbox/src.fewer"; rm -rf "$src"; cp -R "$dropin" "$src"; rm -rf "$src/skills/ratchet-tighten"
+"$install" --from "$src" --to "$repo" >/dev/null 2>&1; [ $? -eq 0 ] && [ -f "$repo/.agents/skills/ratchet-done/SKILL.md" ] && ok || no "refused a source that simply ships fewer skills; the installer must not hardcode the skill list"
 new_repo
 src="$sandbox/src.nohooks"; rm -rf "$src"; cp -R "$dropin" "$src"; rm -rf "$src/hooks" "$src/CLAUDE.md"
 "$install" --from "$src" --to "$repo" --codex >/dev/null 2>&1; [ $? -eq 0 ] && [ -f "$repo/CODEX.md" ] && ok || no "refused a source that only lacks files for an adapter that was not requested"
