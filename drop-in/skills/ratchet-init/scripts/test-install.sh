@@ -18,6 +18,15 @@ trap 'rm -rf "$sandbox"' EXIT
 
 ok() { pass=$((pass + 1)); }
 no() { fail=$((fail + 1)); printf 'FAIL: %s\n' "$1"; }
+# snapshot <repo> — one line per file (POSIX cksum of its bytes, plus its executable bit)
+# and per symlink (its target, not what it points at). No tool outside POSIX, and no
+# silenced errors: a snapshot that cannot be taken must not compare equal to another.
+snapshot() {
+  (cd "$1" && find . -path ./.git -prune -o \( -type f -o -type l \) -print | sort | while IFS= read -r f; do
+    if [ -L "$f" ]; then printf 'L %s -> %s\n' "$f" "$(readlink "$f")"
+    else x=-; [ -x "$f" ] && x=x; printf 'F %s %s %s\n' "$f" "$x" "$(cksum <"$f")"; fi
+  done)
+}
 new_repo() { repo="$sandbox/repo.$((pass + fail))"; mkdir -p "$repo" && git -C "$repo" init -q . ; }
 
 echo "== fresh repo, both adapters =="
@@ -36,9 +45,10 @@ done
 [ ! -e "$repo/.claude/settings.json" ] && ok || no "installer wrote .claude/settings.json; merging is the caller's job"
 
 echo "== second run changes nothing =="
-before="$(cd "$repo" && find . -path ./.git -prune -o \( -type f -o -type l \) -print | sort | xargs shasum 2>/dev/null | shasum)"
+before="$(snapshot "$repo")"
 out="$("$install" --from "$dropin" --to "$repo" --claude --codex 2>&1)"
-after="$(cd "$repo" && find . -path ./.git -prune -o \( -type f -o -type l \) -print | sort | xargs shasum 2>/dev/null | shasum)"
+after="$(snapshot "$repo")"
+[ "$(printf '%s\n' "$before" | wc -l)" -gt 10 ] && ok || no "snapshot is empty or tiny, so the idempotency check below would prove nothing"
 [ "$before" = "$after" ] && ok || no "second run modified the repo"
 printf '%s' "$out" | grep -q "^0 added" && ok || no "second run reported additions: $(printf '%s' "$out" | tail -2)"
 
