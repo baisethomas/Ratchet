@@ -19,6 +19,7 @@ Tool-specific files such as CLAUDE.md should point here rather than duplicate th
 ## Before any edit
 
 - Read `.ratchet/STATE.md` and `.ratchet/DECISIONS.md` if they exist before planning.
+- Tool adapters: after this file, read the adapter for your tool if one exists at the repo root (`CLAUDE.md` for Claude Code, `CODEX.md` for Codex). Adapters add tool specifics only; this file wins any conflict.
 - Treat `STATE.md` as the current state of this branch/workstream, not guaranteed global state across every branch or clone.
 - Read the files you'll change AND their call sites before forming a plan. The repo is context the user didn't type.
 - For anything beyond a trivial change, state the plan before editing.
