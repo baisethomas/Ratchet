@@ -17,21 +17,11 @@ Codex loads `AGENTS.md` automatically; its tool-adapter line points here. This f
 
 ## Model routing
 
-The session that talks to the owner is the **orchestrator**. Its model is selected by the host or owner; it cannot switch itself. The table routes subagents only when the user has expressly authorized delegation — it does not itself grant that authority. Delegate only bounded work and own the result: re-run the checks or read the evidence directly; never accept a subagent's "done" on trust. `AGENTS.md` binds every tier equally; a faster model gets a shorter leash, not a looser contract.
+Tiers, what each owns, and the routing rules are defined in `AGENTS.md` → Delegation and model tiers. This table only says which model fills each tier here. The orchestrator's model is selected by the Codex host or the owner. Model availability varies by host.
 
-Model availability varies by Codex host. Use the named model when available; otherwise use the strongest available model appropriate to the same tier and state the substitution.
-
-| Tier | Model | Owns | Never |
-|---|---|---|---|
-| Orchestrate | **Host-selected; prefer <!-- FILL-ME: strongest model -->** | The conversation with the owner; plans and blast-radius calls; root-cause diagnosis of production symptoms; anything in hard-stop territory; cross-cutting changes spanning <!-- FILL-ME: the modules that must change together -->; medium/high-impact `DECISIONS.md` entries; arguing or accepting review findings; the final report. | Delegates a decision it should make itself. |
-| Implement, high risk | **<!-- FILL-ME: strongest model -->** | Code in the high-risk modules listed in `AGENTS.md` → Repo specifics; anything that writes production data; concurrency changes; test-first bug fixes that must prove reproduce-revert-restore; migration proposals (never execution). | Merges, deploys, executes migrations, or hand-edits <!-- FILL-ME: generated/fragile files, e.g. lockfiles, .pbxproj -->. |
-| Implement, routine | **<!-- FILL-ME: mid-tier model -->** | Code outside the high-risk modules that has a test suite; well-specified refactors within one file; new tests for described behavior; PR body drafts; docs wording changes. | Touches the high-risk modules, resolves merge conflicts, or changes a public API surface or shared contract. |
-| Chores | **<!-- FILL-ME: fastest model -->** | Git mechanics with fully specified inputs; `.ratchet/STATE.md` refreshes; issue-tracker comments and link updates; typo and formatting fixes in docs; read-only lookups and greps; running a named check and reporting its output verbatim. | Edits code, resolves conflicts, writes `DECISIONS.md` entries, or interprets a failing test. |
-
-Rules of thumb:
-
-- **Route by blast radius, not by apparent size.** A one-line change in a high-risk module is high-risk work; a fifty-line new settings screen is routine.
-- **Escalate on the second failure.** If a routine or chores task fails verification twice, or turns out to touch a hard stop, return it to the orchestrator or the next tier up with the failure attached. Never retry a weaker model into the same wall.
-- **Reviews go up a tier.** A hostile diff review (`review-prompts.md` §5) uses a model at least as strong as the one that wrote the diff, in a fresh context.
-- **Verification is tier-independent.** The check command, the hard stops, and the self-test apply to every model equally.
-- **When unsure, use the strongest model.** The cost of a wrong cheap answer in this repo is <!-- FILL-ME: the worst realistic loss, e.g. lost user data -->, not a wasted token.
+| Tier | Model |
+|---|---|
+| Orchestrate | **Host-selected; prefer <!-- FILL-ME: strongest model -->** |
+| Operate, high risk | **<!-- FILL-ME: strongest model -->** |
+| Operate, routine | **<!-- FILL-ME: mid-tier model -->** |
+| Git & docs | **<!-- FILL-ME: fastest model -->** |

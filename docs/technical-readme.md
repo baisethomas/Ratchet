@@ -13,9 +13,9 @@ Ratchet treats the repository as the durable source of truth. Conversation histo
 | File | What it is | Where it goes |
 |---|---|---|
 | `PLAYBOOK.md` | The full manual: chat craft, code craft, project memory, and the compensation layer | Read it once; keep it as the reference |
-| `drop-in/AGENTS.md` | Canonical, model-agnostic repo operating contract | Copy to the repo root of every project. Fill the `FILL-ME` sections |
-| `drop-in/CLAUDE.md` | Thin Claude Code adapter that points to `AGENTS.md` and adds Claude-specific behavior only | Copy to the repo root when using Claude Code |
-| `drop-in/CODEX.md` | Thin Codex adapter: what changes without Claude Code's hooks, plus a model-routing table for delegated work (tiers by blast radius) | Copy to the repo root when using Codex. Fill the `FILL-ME` model and module slots |
+| `drop-in/AGENTS.md` | Canonical, model-agnostic repo operating contract, including the delegation tiers (what each tier owns and never does), routing rules, the single-model fallback, and an optional tier-to-model table for tools with no adapter | Copy to the repo root of every project. Fill the `FILL-ME` sections |
+| `drop-in/CLAUDE.md` | Thin Claude Code adapter that points to `AGENTS.md` and adds Claude-specific behavior only, plus the tier-to-model table for Claude Code (Fable orchestrates, or Opus where Fable is unavailable; Opus and Sonnet operate; Haiku handles git and docs) | Copy to the repo root when using Claude Code |
+| `drop-in/CODEX.md` | Thin Codex adapter: what changes without Claude Code's hooks, plus a tier-to-model table to fill in for your Codex host | Copy to the repo root when using Codex. Fill the `FILL-ME` model slots |
 | `drop-in/STATE.md` | Mutable branch/workstream handoff: objective, current phase, active work, blockers, verification, risks, and next actions | Copy to `.ratchet/STATE.md`; agents maintain it automatically |
 | `drop-in/DECISIONS.md` | Durable decision ledger with an autonomy ladder for low, medium, and high-impact choices | Copy to `.ratchet/DECISIONS.md`; agents maintain it, escalating only high-impact decisions |
 | `drop-in/claude-ai-project-instructions.md` | ~180-word epistemics core | Claude.ai → Project → Custom instructions (or Settings → Preferences for account-wide) |
@@ -96,7 +96,7 @@ If the project requires private memory, gitignore `.ratchet/` or use the project
 
 1. **Every active repo:** copy `AGENTS.md` to the root and fill the `FILL-ME` sections. Create `.ratchet/`, copy `STATE.md` and `DECISIONS.md` into it, then initialize them from the branch/workstream's actual current state and already-settled decisions.
 2. **Claude Code, if used:** copy `CLAUDE.md` to the repo root. Keep it a thin adapter that points back to `AGENTS.md`.
-   **Codex, if used:** copy `CODEX.md` to the repo root and fill its model-routing slots. The hooks below do not fire around Codex; the adapter says so and makes the checks explicit.
+   **Codex, if used:** copy `CODEX.md` to the repo root and fill its tier-to-model table. The hooks below do not fire around Codex; the adapter says so and makes the checks explicit.
 3. **Hooks:** copy `drop-in/hooks/` to `.claude/hooks/`, configure the real checks, and run `test-hooks.sh` before trusting them.
 4. **Optional chat/API layers:** install the provided project/system instructions where useful.
 5. **Later:** graduate repeated workflows to pipelines only when the shape has proven stable.
