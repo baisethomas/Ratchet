@@ -103,7 +103,9 @@ The guard hooks intentionally enforce some of these categories more conservative
 
 The session that talks to the owner is the **orchestrator**. It cannot switch its own model. This section routes delegated work only when the owner has authorized delegation — it does not itself grant that authority. Delegate only bounded work and own the result: re-run the checks or read the evidence directly; never accept a subagent's "done" on trust. This contract binds every tier equally; a faster model gets a shorter leash, not a looser contract.
 
-Tiers are defined here. Which model fills each tier is tool-specific and lives in the adapter (`CLAUDE.md`, `CODEX.md`). If a named model is unavailable, use the strongest available model appropriate to the same tier and state the substitution.
+Tiers are roles, not vendors. Which model fills each tier lives in the tool's adapter (`CLAUDE.md`, `CODEX.md`) or, for tools with no adapter, in the table at the end of this section. If a named model is unavailable, use the strongest available model appropriate to the same tier and state the substitution.
+
+If only one model is available, every tier collapses onto it. The "Owns" column still describes the work; nothing is delegated. "Escalate on the second failure" then means stop and report to the owner. Verification, hard stops, and the self-test are unchanged. A single weaker model gets more process, not fewer rules.
 
 | Tier | Owns | Never |
 |---|---|---|
@@ -117,6 +119,15 @@ Tiers are defined here. Which model fills each tier is tool-specific and lives i
 - **Reviews go up a tier.** A hostile diff review (`review-prompts.md` §5) uses a model at least as strong as the one that wrote the diff, in a fresh context.
 - **Verification is tier-independent.** The check command, the guards, the hard stops, and the self-test apply to every model equally.
 - **When unsure, go up.** Use the high-risk operator tier. The cost of a wrong cheap answer in this repo is <!-- FILL-ME: the worst realistic loss, e.g. lost user data -->, not a wasted token.
+
+<!-- FILL-ME, optional: model routing for tools that read this file directly and have no adapter
+     (local or open-weight setups). Delete this table if an adapter covers your tool or you run one model. -->
+| Tier | Model |
+|---|---|
+| Orchestrate | <!-- FILL-ME: e.g. your largest local model --> |
+| Operate, high risk | <!-- FILL-ME --> |
+| Operate, routine | <!-- FILL-ME --> |
+| Git & docs | <!-- FILL-ME: e.g. your smallest/fastest model --> |
 
 ## Reporting format
 
