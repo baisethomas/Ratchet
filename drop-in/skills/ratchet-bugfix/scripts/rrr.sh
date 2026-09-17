@@ -17,7 +17,9 @@
 #
 # The fix is backed up first and restored on every exit path, including Ctrl-C and a
 # test that deletes the file's directory. If a restore ever fails, the backup directory
-# is kept and its path printed. Git's index, stash, and branches are never touched.
+# is kept and its path printed. A file is only ever deleted if it did not exist when
+# the script started; a missing backup never counts as that. Backups live in the git
+# directory. Git's index, stash, and branches are never touched.
 #
 # Exit: 0 = PROVEN, 1 = NOT PROVEN, 2 = usage or setup error.
 
@@ -80,9 +82,14 @@ for p in "${paths[@]}"; do
   [ -e "$p" ] || at_base "$p" || die "$p exists neither in the work tree nor at $base"
 done
 
-backup="$(mktemp -d "${TMPDIR:-/tmp}/rrr.XXXXXX")" || die "could not create a backup directory"
+# Backups live in the git directory, not $TMPDIR: tests routinely clean temp directories.
+backup="$(mktemp -d "$(git rev-parse --absolute-git-dir)/rrr.XXXXXX")" || die "could not create a backup directory"
 restored=0
 keep_backup=0
+# existed[i] is 1 if paths[i] was present when we started. It is kept in memory, never
+# inferred from the backup directory: a missing backup must never read as "this file
+# did not exist, delete it".
+existed=()
 
 # restore — put every fix file back. Only marks itself done if every copy succeeded;
 # otherwise the backup directory is kept and its location printed.
@@ -90,11 +97,15 @@ restore() {
   [ "$restored" -eq 1 ] && return 0
   local i=0 p ok=1
   for p in "${paths[@]}"; do
-    if [ -e "$backup/$i" ]; then
+    if [ "${existed[$i]}" -eq 0 ]; then
+      rm -f "$p" || ok=0
+    elif [ -f "$backup/$i" ]; then
       # The test may have deleted the file's directory; recreate it.
       { mkdir -p "$(dirname "$p")" && cp -p "$backup/$i" "$p" && cmp -s "$backup/$i" "$p"; } || ok=0
     else
-      rm -f "$p" || ok=0
+      # The backup is gone. Leave the file exactly as it is rather than guess.
+      printf 'rrr: the backup of %s is missing; the file was left untouched\n' "$p" >&2
+      ok=0
     fi
     i=$((i + 1))
   done
@@ -103,7 +114,7 @@ restore() {
     return 0
   fi
   keep_backup=1
-  printf 'rrr: RESTORE FAILED — your fix files are preserved, numbered in argument order, in %s\n' "$backup" >&2
+  printf 'rrr: RESTORE FAILED — any surviving backups are in %s, numbered in argument order\n' "$backup" >&2
   return 1
 }
 
@@ -111,14 +122,33 @@ cleanup() {
   restore
   [ "$keep_backup" -eq 1 ] || rm -rf "$backup"
 }
-trap cleanup EXIT
-trap 'exit 130' INT TERM
+# backups_intact — every file that existed still has a byte-identical backup.
+backups_intact() {
+  local i=0 p
+  for p in "${paths[@]}"; do
+    if [ "${existed[$i]}" -eq 1 ]; then
+      [ -f "$backup/$i" ] || return 1
+    fi
+    i=$((i + 1))
+  done
+  return 0
+}
 
+# Back everything up before the restore trap exists. Until every copy is verified,
+# nothing in the work tree has been touched, so a failure here must only clean up.
 i=0
 for p in "${paths[@]}"; do
-  [ -e "$p" ] && { cp -p "$p" "$backup/$i" || die "could not back up $p"; }
+  if [ -e "$p" ]; then
+    existed[$i]=1
+    { cp -p "$p" "$backup/$i" && cmp -s "$p" "$backup/$i"; } || { rm -rf "$backup"; die "could not back up $p; nothing was changed"; }
+  else
+    existed[$i]=0
+  fi
   i=$((i + 1))
 done
+
+trap cleanup EXIT
+trap 'exit 130' INT TERM
 
 # run_phase <label> — runs the test, prints the tail of its output, returns its exit code.
 run_phase() {
@@ -139,6 +169,12 @@ run_phase "1/3 WITH THE FIX (must pass)"
 if [ $? -ne 0 ]; then
   verdict "NOT PROVEN — the test does not pass with the fix in place. Nothing was reverted."
   exit 1
+fi
+
+# The test has now run once. If it removed our backups, stop before reverting anything.
+if ! backups_intact; then
+  restored=1
+  die "the test command removed rrr's backup directory ($backup); nothing was reverted"
 fi
 
 changed=0

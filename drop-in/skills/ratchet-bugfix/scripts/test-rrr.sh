@@ -111,6 +111,19 @@ printf '. ./src/lib.sh\n[ "$(add 2 3)" = 5 ] || { rm -rf src; exit 1; }\n' >rm_t
 "$rrr" --test "bash rm_test.sh" -- src/lib.sh >/dev/null 2>&1
 if cmp -s src/lib.sh "$sandbox/src.expected"; then pass=$((pass + 1)); else fail=$((fail + 1)); echo "FAIL: fix lost when the test removed its parent directory"; fi
 
+echo "== a fix that could not be backed up is never deleted =="
+new_repo
+chmod 000 lib.sh
+"$rrr" --test "true" -- lib.sh >/dev/null 2>&1
+code=$?
+chmod 644 lib.sh 2>/dev/null
+if [ "$code" -eq 2 ] && cmp -s lib.sh "$sandbox/expected"; then pass=$((pass + 1)); else fail=$((fail + 1)); echo "FAIL: unreadable fix file — expected exit 2 with the fix intact, got exit $code"; fi
+new_repo
+mkdir -p "$sandbox/tmp"
+out="$(TMPDIR="$sandbox/tmp" "$rrr" --test 'rm -rf "$TMPDIR"/rrr.* "$(git rev-parse --git-dir)"/rrr.*; bash good_test.sh' -- lib.sh 2>&1)"
+code=$?
+if [ "$code" -eq 2 ] && cmp -s lib.sh "$sandbox/expected" && printf '%s' "$out" | grep -q "nothing was reverted"; then pass=$((pass + 1)); else fail=$((fail + 1)); echo "FAIL: test deleted the backup — expected exit 2, the fix intact, and \"nothing was reverted\"; got exit $code"; fi
+
 echo "== a fix that only changes the executable bit =="
 new_repo
 git checkout -q lib.sh && cp lib.sh "$sandbox/expected"
