@@ -153,6 +153,17 @@ exit \$rc
 SWAP
 "$rrr" --test "bash swapdir_test.sh" -- src/lib.sh >/dev/null 2>&1
 if [ "$(cat "$sandbox/outdir/lib.sh")" = precious ]; then pass=$((pass + 1)); else fail=$((fail + 1)); echo "FAIL: wrote through a swapped-in parent directory to a file outside the repo"; fi
+new_repo
+mkdir -p pkg/deep/er "$sandbox/outnest" && printf 'add() { echo $(( $1 - $2 )); }\n' >pkg/deep/er/lib.sh && git add pkg && git commit -qm "buggy, nested"
+printf 'add() { echo $(( $1 + $2 )); }\n' >pkg/deep/er/lib.sh
+cat >swapnest_test.sh <<SWAP
+[ -L pkg ] && exit 1
+. ./pkg/deep/er/lib.sh; [ "\$(add 2 3)" = 5 ]; rc=\$?
+mv pkg pkg.real && ln -s "$sandbox/outnest" pkg
+exit \$rc
+SWAP
+"$rrr" --test "bash swapnest_test.sh" -- pkg/deep/er/lib.sh >/dev/null 2>&1
+if [ -z "$(ls -A "$sandbox/outnest")" ]; then pass=$((pass + 1)); else fail=$((fail + 1)); echo "FAIL: created directories outside the repo through a swapped-in parent"; fi
 
 echo "== a test that damages the fix on its final run is caught and undone =="
 for damage in 'rm -f lib.sh' 'echo "# junk" >>lib.sh'; do
