@@ -21,10 +21,12 @@ Tiers, what each owns, and the routing rules are defined in `AGENTS.md` → Dele
 
 | Tier | Model |
 |---|---|
-| Orchestrate | **Fable** |
-| Operate, high risk | **Opus** |
-| Operate, routine | **Sonnet** |
-| Git & docs | **Haiku** |
+| Orchestrate | **Fable** (`fable`) |
+| Operate, high risk | **Opus** (`opus`) |
+| Operate, routine | **Sonnet** (`sonnet`) |
+| Git & docs | **Haiku** (`haiku`) |
+
+The value in backticks is the alias that `/model`, the `model` setting, and the Agent tool accept. Fable is not available on every plan or Claude Code version: where `fable` is not selectable, Opus orchestrates and takes the high-risk tier as well — state the substitution, as `AGENTS.md` requires.
 
 ## Repo-specific Claude notes
 
