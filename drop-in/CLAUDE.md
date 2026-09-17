@@ -15,6 +15,17 @@ Before doing any work, read and follow `AGENTS.md` in full. Its rules govern pla
 - Maintain project memory autonomously according to the low/medium/high impact thresholds in `AGENTS.md`.
 - Treat any conflict between this file and `AGENTS.md` as a configuration error. `AGENTS.md` wins; report the conflict.
 
+## Model routing
+
+Tiers, what each owns, and the routing rules are defined in `AGENTS.md` → Delegation and model tiers. This table only says which model fills each tier here. The owner picks the orchestrator's model (`/model`, or the `model` setting). Set a subagent's tier with the Agent tool's `model` parameter, or with `model:` in a `.claude/agents/*.md` definition.
+
+| Tier | Model |
+|---|---|
+| Orchestrate | **Fable** |
+| Operate, high risk | **Opus** |
+| Operate, routine | **Sonnet** |
+| Git & docs | **Haiku** |
+
 ## Repo-specific Claude notes
 
 <!-- FILL-ME only with behavior genuinely specific to Claude Code. Universal repo rules belong in AGENTS.md. -->

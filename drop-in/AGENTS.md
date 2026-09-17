@@ -99,6 +99,25 @@ Require explicit human approval before:
 
 The guard hooks intentionally enforce some of these categories more conservatively than prose alone. If a guarded action is genuinely approved, the human performs or explicitly bypasses the guard; agents must not invent self-approval mechanisms.
 
+## Delegation and model tiers
+
+The session that talks to the owner is the **orchestrator**. It cannot switch its own model. This section routes delegated work only when the owner has authorized delegation — it does not itself grant that authority. Delegate only bounded work and own the result: re-run the checks or read the evidence directly; never accept a subagent's "done" on trust. This contract binds every tier equally; a faster model gets a shorter leash, not a looser contract.
+
+Tiers are defined here. Which model fills each tier is tool-specific and lives in the adapter (`CLAUDE.md`, `CODEX.md`). If a named model is unavailable, use the strongest available model appropriate to the same tier and state the substitution.
+
+| Tier | Owns | Never |
+|---|---|---|
+| Orchestrate | The conversation with the owner; plans and blast-radius calls; root-cause diagnosis of production symptoms; anything in hard-stop territory; cross-cutting changes spanning <!-- FILL-ME: the modules that must change together -->; medium/high-impact `DECISIONS.md` entries; arguing or accepting review findings; the final report. | Delegates a decision it should make itself. |
+| Operate, high risk | Code in the high-risk modules listed under Repo specifics; anything that writes production data; concurrency changes; test-first bug fixes that must prove reproduce-revert-restore; migration proposals (never execution). | Merges, deploys, executes migrations, or hand-edits <!-- FILL-ME: generated/fragile files, e.g. lockfiles, .pbxproj -->. |
+| Operate, routine | Code outside the high-risk modules that has a test suite; well-specified refactors within one file; new tests for described behavior. | Touches the high-risk modules, resolves merge conflicts, or changes a public API surface or shared contract. |
+| Git & docs | Git mechanics with fully specified inputs; documentation writing and edits; PR body drafts; `.ratchet/STATE.md` refreshes; issue-tracker comments and link updates; read-only lookups and greps; running a named check and reporting its output verbatim. | Edits code, resolves conflicts, runs a git operation on the hard-stop list, rewords this file or an adapter, writes `DECISIONS.md` entries, or interprets a failing test. |
+
+- **Route by blast radius, not by apparent size.** A one-line change in a high-risk module is high-risk work; a fifty-line new settings screen is routine.
+- **Escalate on the second failure.** If a routine or git-and-docs task fails verification twice, or turns out to touch a hard stop, return it to the orchestrator or the next tier up with the failure attached. Never retry a weaker model into the same wall.
+- **Reviews go up a tier.** A hostile diff review (`review-prompts.md` §5) uses a model at least as strong as the one that wrote the diff, in a fresh context.
+- **Verification is tier-independent.** The check command, the guards, the hard stops, and the self-test apply to every model equally.
+- **When unsure, go up.** Use the high-risk operator tier. The cost of a wrong cheap answer in this repo is <!-- FILL-ME: the worst realistic loss, e.g. lost user data -->, not a wasted token.
+
 ## Reporting format
 
 Every nontrivial completion summary should contain, in order:
