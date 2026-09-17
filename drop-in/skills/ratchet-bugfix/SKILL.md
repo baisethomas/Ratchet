@@ -59,3 +59,5 @@ When the script can't be used (fix and test share a file, a compiled artifact si
 - Run the repo's full check command from `AGENTS.md` → Repo specifics. A fix that breaks a neighbor is not a fix.
 - If anything fails and you don't understand why, stop and report. Do not edit another test to get green.
 - Finish with `ratchet-done`. In its verification section include: the original failing reproduction, the `rrr.sh` verdict line, and the full-suite result.
+
+<sub>Two test-quality points in step 1 — independent expected values, and a too-shallow seam being a finding — are adapted from the `tdd` and `diagnosing-bugs` skills in [mattpocock/skills](https://github.com/mattpocock/skills) (MIT). See `../CREDITS.md`.</sub>
