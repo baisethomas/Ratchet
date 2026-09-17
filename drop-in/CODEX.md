@@ -12,7 +12,7 @@ Codex loads `AGENTS.md` automatically; its tool-adapter line points here. This f
 
 - The hooks in `.claude/settings.json` are not installed around Codex tool calls. Treat the hard stops in `AGENTS.md` as policy even when no guard intercepts a command, and run the required checks explicitly rather than assuming a stop hook ran them.
 - Codex task context and any harness-managed memory are not model-agnostic project memory. Durable, shareable state belongs in `.ratchet/` under the rules in `AGENTS.md`; sensitive private pointers do not.
-- Use the repo skills in `.claude/skills/` when their workflow matches the task. The directory name is historical, not an instruction to ignore them outside Claude Code.
+- Codex discovers repo skills in `.agents/skills/`, not `.claude/skills/`. Ratchet installs its skills there for that reason. If a workflow exists only under `.claude/skills/`, Codex will not load it on its own: read its `SKILL.md` directly when the task matches, and report the gap.
 - Treat any conflict between this file and `AGENTS.md` as a configuration error. `AGENTS.md` wins; report the conflict.
 
 ## Model routing

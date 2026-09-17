@@ -23,6 +23,7 @@ Ratchet treats the repository as the durable source of truth. Conversation histo
 | `drop-in/review-prompts.md` | Copy-paste prompts for adversarial review and verification | Keep available for manual/fresh-context review passes |
 | `drop-in/claude-code-hooks-settings.json` | Post-edit lint hook, stop-hook test gate, destructive-command guard | Merge into `.claude/settings.json` in the repo; copy `drop-in/hooks/` alongside it |
 | `drop-in/hooks/` | Tested verification/guard scripts | Copy to `.claude/hooks/`, configure, and run `test-hooks.sh` |
+| `drop-in/skills/` | Procedures agents load on their own when the task matches: `ratchet-done` (completion gate: diff audit, checks, RAN / READ / ASSUMED, state refresh) and `ratchet-bugfix` (reproduce, fix, then `rrr.sh` proves the test fails without the fix). Rules stay in `AGENTS.md`; skills only carry the how | Copy to `.agents/skills/` (where Codex looks), symlink `.claude/skills` to it (where Claude Code looks), and run `ratchet-bugfix/scripts/test-rrr.sh` |
 | `drop-in/done-audit-checklist.md` | Short acceptance audit for every nontrivial "done" | Use at final review, especially on high-risk work |
 | `drop-in/graduation-rule.md` | When a recurring workflow graduates from prompts to a pipeline | Apply after a workflow repeats with the same shape |
 | `drop-in/pipeline-skeleton.py` | Example graduated workflow | Use only when the workflow warrants orchestration |
@@ -98,8 +99,9 @@ If the project requires private memory, gitignore `.ratchet/` or use the project
 2. **Claude Code, if used:** copy `CLAUDE.md` to the repo root. Keep it a thin adapter that points back to `AGENTS.md`.
    **Codex, if used:** copy `CODEX.md` to the repo root and fill its tier-to-model table. The hooks below do not fire around Codex; the adapter says so and makes the checks explicit.
 3. **Hooks:** copy `drop-in/hooks/` to `.claude/hooks/`, configure the real checks, and run `test-hooks.sh` before trusting them.
-4. **Optional chat/API layers:** install the provided project/system instructions where useful.
-5. **Later:** graduate repeated workflows to pipelines only when the shape has proven stable.
+4. **Skills:** copy `drop-in/skills/` to `.agents/skills/`, then `ln -s ../.agents/skills .claude/skills` so both tools load one copy (Codex scans `.agents/skills/`, Claude Code scans `.claude/skills/`; if `.claude/skills/` already exists, symlink each skill folder into it instead). Run `.agents/skills/ratchet-bugfix/scripts/test-rrr.sh` before trusting the proof script. Skills hold procedures only — never move a rule or hard stop out of `AGENTS.md` into one, because a skill that fails to trigger must not be able to switch a rule off.
+5. **Optional chat/API layers:** install the provided project/system instructions where useful.
+6. **Later:** graduate repeated workflows to pipelines only when the shape has proven stable.
 
 ## Handoff rule
 
