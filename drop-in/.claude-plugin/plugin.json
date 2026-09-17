@@ -1,0 +1,13 @@
+{
+  "name": "ratchet",
+  "version": "1.0.0",
+  "description": "Ratchet's six skills (completion gate, test-first bug fixing with a revert-restore proof, hostile review, handoff, tighten-after-failure, installer) plus the destructive-command guard. The contract, project memory, and stop gate stay per-repo: run /ratchet:ratchet-init to install them.",
+  "author": {
+    "name": "Baise Thomas",
+    "url": "https://github.com/baisethomas"
+  },
+  "homepage": "https://github.com/baisethomas/Ratchet",
+  "repository": "https://github.com/baisethomas/Ratchet",
+  "keywords": ["verification", "review", "skills", "hooks", "agents-md", "codex"],
+  "hooks": "./plugin-hooks.json"
+}

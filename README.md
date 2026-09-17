@@ -39,7 +39,7 @@ For the full operating model, installation sequence, invariants, and rationale, 
 
 The previous detailed README has been preserved at [`docs/technical-readme.md`](docs/technical-readme.md).
 
-The reusable files live in [`drop-in/`](drop-in/).
+The reusable files live in [`drop-in/`](drop-in/). In Claude Code, `/plugin marketplace add baisethomas/Ratchet` then `/plugin install ratchet@ratchet` installs the skills and the destructive-command guard everywhere; `/ratchet:ratchet-init` then sets up each repo.
 
 ## Credits
 

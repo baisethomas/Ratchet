@@ -12,7 +12,7 @@ The installer never overwrites. The judgement — what the check command is, whi
 
 ## 1. Find the source and look at the target
 
-- **Source:** a Ratchet checkout's `drop-in/` directory. Ask for its path. If the owner has none, offer to clone `https://github.com/baisethomas/Ratchet` into a temporary directory; cloning is a network call, so wait for a yes.
+- **Source:** a complete Ratchet `drop-in/` directory. If this skill is running from the Ratchet plugin, that is the plugin root itself — the directory two levels above this `SKILL.md` — and it contains `AGENTS.md`, so use it. Otherwise (the skills were copied into a repo, so the directory two levels up has no `AGENTS.md`) ask for the path to a Ratchet checkout, or offer to clone `https://github.com/baisethomas/Ratchet` into a temporary directory; cloning is a network call, so wait for a yes.
 - **Target:** read before proposing anything — which of `AGENTS.md`, `CLAUDE.md`, `CODEX.md`, `.ratchet/`, `.agents/skills/`, `.claude/skills/`, `.claude/hooks/`, `.claude/settings.json` already exist; the build and test tooling (`package.json` scripts, `Makefile`, `pyproject.toml`, CI workflows); which agent tools the owner uses here.
 
 **Done when:** you can list what exists, what is missing, and which tools (Claude Code, Codex, other) are in play.
@@ -42,6 +42,8 @@ Open each installed file and resolve every `FILL-ME`. Propose values from what s
 Leave a slot as `FILL-ME` rather than guess; list the ones left open.
 
 ## 4. Hooks (Claude Code only)
+
+If the Ratchet plugin is enabled here, the destructive-command guard already runs from the plugin; installing `.claude/hooks/guard-destructive.sh` as well would run it twice. Wire only the stop gate and the lint hook, and say so.
 
 - Set `CHECKS` in `.claude/hooks/check-on-stop.sh` to the check command from step 3.
 - Merge the `hooks` block from `<source>/claude-code-hooks-settings.json` into `.claude/settings.json`. If that file already has hooks, add Ratchet's entries beside them; do not replace the block. Drop the `_readme` and `_purpose` keys. Show the diff before writing.

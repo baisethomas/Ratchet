@@ -1,0 +1,16 @@
+{
+  "description": "Ratchet plugin hooks. Only the destructive-command guard ships here, because a plugin hook runs in every project the plugin is enabled in. The stop gate needs a per-repo check command and the lint hook is ESLint-specific, so those stay as drop-ins under .claude/hooks/ (see hooks/ and claude-code-hooks-settings.json).",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/guard-destructive.sh"
+          }
+        ]
+      }
+    ]
+  }
+}
