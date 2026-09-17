@@ -1,0 +1,17 @@
+{
+  "name": "ratchet",
+  "owner": {
+    "name": "Baise Thomas",
+    "url": "https://github.com/baisethomas"
+  },
+  "description": "Ratchet: a way of working for coding agents at any capability tier. Every escaped failure tightens the system.",
+  "plugins": [
+    {
+      "name": "ratchet",
+      "source": "./drop-in",
+      "description": "Ratchet's six skills plus the destructive-command guard, as a Claude Code plugin. Install the per-repo contract and memory with /ratchet:ratchet-init.",
+      "category": "productivity",
+      "keywords": ["verification", "review", "skills", "hooks"]
+    }
+  ]
+}
