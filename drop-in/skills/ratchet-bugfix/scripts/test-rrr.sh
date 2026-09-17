@@ -114,10 +114,16 @@ if cmp -s src/lib.sh "$sandbox/src.expected"; then pass=$((pass + 1)); else fail
 echo "== a fix that could not be backed up is never deleted =="
 new_repo
 chmod 000 lib.sh
-"$rrr" --test "true" -- lib.sh >/dev/null 2>&1
-code=$?
-chmod 644 lib.sh 2>/dev/null
-if [ "$code" -eq 2 ] && cmp -s lib.sh "$sandbox/expected"; then pass=$((pass + 1)); else fail=$((fail + 1)); echo "FAIL: unreadable fix file — expected exit 2 with the fix intact, got exit $code"; fi
+if [ -r lib.sh ]; then
+  # Root (common in containers) can read a mode-000 file, so the copy would succeed.
+  chmod 644 lib.sh
+  echo "SKIP: unreadable fix file — this user can read mode-000 files"
+else
+  "$rrr" --test "true" -- lib.sh >/dev/null 2>&1
+  code=$?
+  chmod 644 lib.sh 2>/dev/null
+  if [ "$code" -eq 2 ] && cmp -s lib.sh "$sandbox/expected"; then pass=$((pass + 1)); else fail=$((fail + 1)); echo "FAIL: unreadable fix file — expected exit 2 with the fix intact, got exit $code"; fi
+fi
 new_repo
 mkdir -p "$sandbox/tmp"
 out="$(TMPDIR="$sandbox/tmp" "$rrr" --test 'rm -rf "$TMPDIR"/rrr.* "$(git rev-parse --git-dir)"/rrr.*; bash good_test.sh' -- lib.sh 2>&1)"
@@ -147,6 +153,18 @@ exit \$rc
 SWAP
 "$rrr" --test "bash swapdir_test.sh" -- src/lib.sh >/dev/null 2>&1
 if [ "$(cat "$sandbox/outdir/lib.sh")" = precious ]; then pass=$((pass + 1)); else fail=$((fail + 1)); echo "FAIL: wrote through a swapped-in parent directory to a file outside the repo"; fi
+
+echo "== a test that damages the fix on its final run is caught and undone =="
+for damage in 'rm -f lib.sh' 'echo "# junk" >>lib.sh'; do
+  new_repo
+  cat >third_run_test.sh <<THIRD
+n=\$(cat runs 2>/dev/null || echo 0); n=\$((n + 1)); echo \$n >runs
+. ./lib.sh; [ "\$(add 2 3)" = 5 ]; rc=\$?
+[ \$n -eq 3 ] && { $damage; }
+exit \$rc
+THIRD
+  check "final run does: $damage" 1 "changed the fix files" --test "bash third_run_test.sh" -- lib.sh
+done
 
 echo "== a fix that only changes the executable bit =="
 new_repo

@@ -148,7 +148,27 @@ restore() {
   return 1
 }
 
+# fix_intact — every listed path is exactly as it was when we started: same bytes, same
+# executable bit, still absent if it was absent. Paths whose backup is gone are skipped;
+# restore reports those.
+fix_intact() {
+  local i=0 p
+  for p in "${paths[@]}"; do
+    if [ "${existed[$i]}" -eq 0 ]; then
+      { [ -e "$p" ] || [ -L "$p" ]; } && return 1
+    elif [ -f "$backup/$i" ]; then
+      [ -f "$p" ] && [ ! -L "$p" ] && cmp -s "$backup/$i" "$p" || return 1
+      if [ -x "$backup/$i" ]; then [ -x "$p" ] || return 1; else [ -x "$p" ] && return 1; fi
+    fi
+    i=$((i + 1))
+  done
+  return 0
+}
+
 cleanup() {
+  # "Restored" is only true until the test command runs again, so check the files
+  # themselves rather than trusting the flag.
+  if [ "$restored" -eq 1 ] && [ "$keep_backup" -eq 0 ] && ! fix_intact; then restored=0; fi
   restore
   [ "$keep_backup" -eq 1 ] || rm -rf "$backup"
 }
@@ -243,7 +263,18 @@ if [ "$reverted_code" -eq 0 ]; then
 fi
 
 run_phase "3/3 FIX RESTORED (must pass)"
-if [ $? -ne 0 ]; then
+final_code=$?
+
+# The test ran once more after the restore. If it touched the fix, put the fix back and
+# refuse the proof: a test that rewrites the code under test has not proven anything.
+if ! fix_intact; then
+  restored=0
+  restore || exit 2
+  verdict "NOT PROVEN — the test command changed the fix files while it ran. They have been restored. Make the test leave the files it is testing alone, then run this again."
+  exit 1
+fi
+
+if [ "$final_code" -ne 0 ]; then
   verdict "NOT PROVEN — the test fails after restoring the fix. It is flaky or order-dependent. The fix has been restored."
   exit 1
 fi

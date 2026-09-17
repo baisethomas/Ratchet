@@ -49,6 +49,7 @@ If the verdict is `NOT PROVEN`:
 | does not exercise the bug | The test passes without your fix | Rewrite the test until it fails for the right reason. Do not weaken the claim instead. |
 | does not pass with the fix | The fix is incomplete or the test is wrong | Back to step 2 |
 | no fix to revert | Wrong files listed, or the fix is already committed | Correct the file list or pass `--base` |
+| changed the fix files | The test command rewrote or deleted a file it is supposed to be testing | Fix the test's setup or cleanup so it leaves the fix files alone, then run again |
 | flaky or order-dependent | Green → red → red | The test leaks state. Fix the test before trusting it. |
 
 When the script can't be used (fix and test share a file, a compiled artifact sits in between, a manual reproduction): do the same three runs by hand and paste all three outputs. Never substitute "I'm confident it would fail."
