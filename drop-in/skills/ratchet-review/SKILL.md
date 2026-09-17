@@ -11,7 +11,8 @@ The author of a diff is the worst-placed reader of it. The review happens in a c
 
 ## 1. Pin the comparison
 
-- Fixed point: what the user named, else the merge-base with the main branch. Confirm it resolves (`git rev-parse <ref>`) and that `git diff <ref>...HEAD` is non-empty. A bad ref fails here, not inside a reviewer.
+- Decide what is being reviewed. **Everything since a base** (a branch, a PR, "since `main`"): the diff is `git diff <base>...HEAD`, where the base is what the user named, else the merge-base with the main branch. **One named commit** ("review `abc123`", "review the last commit"): the diff is `git diff <commit>^ <commit>` — comparing a commit with itself is empty, and `<commit>...HEAD` would review everything *after* it instead.
+- Confirm every ref resolves (`git rev-parse <ref>`) and that the diff is non-empty. A bad ref fails here, not inside a reviewer.
 - Write one sentence stating what the change was asked to do. The reviewer judges scope against that sentence, so get it from the request, the issue, or `.ratchet/STATE.md` — not from the diff.
 
 **Done when:** you have a diff command that produces output, a commit list, and the one-sentence task.

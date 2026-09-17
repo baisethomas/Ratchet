@@ -25,7 +25,7 @@ Tell the owner what will be added and what will be skipped, and get a yes. Then:
 <source>/skills/ratchet-init/scripts/install.sh --from <source> --to <repo root> [--claude] [--codex]
 ```
 
-Pass `--claude` and `--codex` only for tools actually used here. Read the `ADD` / `SKIP` / `LINK` lines. Every `SKIP` is a file the repo already had: compare it with Ratchet's version and tell the owner what differs. Never replace it yourself — an existing `AGENTS.md` is someone's contract.
+`--to` must be the repo root. Pass `--claude` and `--codex` only for tools actually used here. Read the `ADD` / `SKIP` / `LINK` lines. A `SKIP ... (exists)` is a file the repo already had: compare it with Ratchet's version and tell the owner what differs. A `SKIP ... (parent is a symlink)` means a directory such as `.claude` or `.ratchet` points somewhere else (shared dotfiles, another checkout); the installer will not write through it, so ask the owner where those files should live. Never replace it yourself — an existing `AGENTS.md` is someone's contract.
 
 **Done when:** the installer exited 0 and every `SKIP` has been explained.
 

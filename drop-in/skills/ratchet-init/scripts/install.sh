@@ -9,8 +9,9 @@
 #          .claude/skills already exists as a real directory).
 # --codex  adds CODEX.md.
 #
-# Anything that already exists at a destination — file, directory, or symlink — is
-# left exactly as it is and reported as SKIP. Nothing is merged, overwritten, or
+# --to must be the repo root. Anything that already exists at a destination — file,
+# directory, or symlink — is left exactly as it is and reported as SKIP, and so is any
+# destination that sits under a symlinked directory (it would be written elsewhere). Nothing is merged, overwritten, or
 # deleted, so running this twice is safe and the second run changes nothing.
 # It does not touch .claude/settings.json: merging the hooks block is a judgement
 # call and is left to the caller.
@@ -49,18 +50,41 @@ git -C "$to" rev-parse --is-inside-work-tree >/dev/null 2>&1 || die "$to is not 
 from="$(cd "$from" && pwd -P)"
 to="$(cd "$to" && pwd -P)"
 [ "$from" = "$to" ] && die "source and destination are the same directory"
+root="$(cd "$(git -C "$to" rev-parse --show-toplevel)" && pwd -P)" || die "could not resolve the repo root"
+[ "$to" = "$root" ] || die "$to is a subdirectory; --to must be the repo root ($root). The contract, .ratchet/, and .claude/ belong there"
 
 added=0
 skipped=0
 
 taken() { [ -e "$1" ] || [ -L "$1" ]; }
 
+# linked_parent <destination relative to $to> — true if any directory on the way to the
+# destination is a symlink. mkdir -p and cp would follow it and write wherever it points
+# (a shared dotfiles directory, another repo), so those destinations are skipped.
+linked_parent() {
+  local dir rest="$1" walked="$to"
+  while [ "$rest" != "${rest#*/}" ]; do
+    dir="${rest%%/*}"; rest="${rest#*/}"; walked="$walked/$dir"
+    [ -L "$walked" ] && return 0
+  done
+  return 1
+}
+
+# blocked <destination relative to $to> — report and count a destination we will not touch.
+blocked() {
+  if linked_parent "$1"; then
+    printf 'SKIP  %s (parent is a symlink)\n' "$1"; skipped=$((skipped + 1)); return 0
+  fi
+  if taken "$to/$1"; then
+    printf 'SKIP  %s (exists)\n' "$1"; skipped=$((skipped + 1)); return 0
+  fi
+  return 1
+}
+
 # put <source file> <destination relative to $to>
 put() {
   local dest="$to/$2"
-  if taken "$dest"; then
-    printf 'SKIP  %s (exists)\n' "$2"; skipped=$((skipped + 1)); return 0
-  fi
+  blocked "$2" && return 0
   mkdir -p "$(dirname "$dest")" && cp -p "$1" "$dest" || die "could not write $2"
   printf 'ADD   %s\n' "$2"; added=$((added + 1))
 }
@@ -78,9 +102,7 @@ put_tree() {
 # link <target> <link path relative to $to>
 link() {
   local dest="$to/$2"
-  if taken "$dest"; then
-    printf 'SKIP  %s (exists)\n' "$2"; skipped=$((skipped + 1)); return 0
-  fi
+  blocked "$2" && return 0
   mkdir -p "$(dirname "$dest")" && ln -s "$1" "$dest" || die "could not link $2"
   printf 'LINK  %s -> %s\n' "$2" "$1"; added=$((added + 1))
 }

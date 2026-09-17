@@ -82,6 +82,11 @@ ln -s nowhere "$repo/CLAUDE.md"
 out="$("$install" --from "$dropin" --to "$repo" --claude 2>&1)"; code=$?
 [ -L "$repo/CLAUDE.md" ] && [ ! -e "$repo/nowhere" ] && ok || no "wrote through a dangling symlink destination"
 [ "$code" -eq 0 ] && printf '%s' "$out" | grep -q "^SKIP  CLAUDE.md" && ok || no "a dangling symlink destination should be a clean SKIP, got exit $code"
+new_repo
+mkdir -p "$sandbox/shared-ratchet" "$sandbox/shared-claude" && ln -s "$sandbox/shared-ratchet" "$repo/.ratchet" && ln -s "$sandbox/shared-claude" "$repo/.claude"
+out="$("$install" --from "$dropin" --to "$repo" --claude 2>&1)"; code=$?
+[ -z "$(ls -A "$sandbox/shared-ratchet")" ] && [ -z "$(ls -A "$sandbox/shared-claude")" ] && ok || no "wrote outside the repo through a symlinked parent directory"
+[ "$code" -eq 0 ] && printf '%s' "$out" | grep -q "^SKIP  .ratchet/STATE.md (parent is a symlink)" && [ -f "$repo/AGENTS.md" ] && ok || no "a symlinked parent should be a reported SKIP while the rest installs, got exit $code"
 
 echo "== setup errors exit 2 and write nothing =="
 mkdir -p "$sandbox/plain"
@@ -89,6 +94,8 @@ mkdir -p "$sandbox/plain"
 new_repo
 "$install" --from "$sandbox/plain" --to "$repo" >/dev/null 2>&1; [ $? -eq 2 ] && ok || no "accepted a source with no AGENTS.md"
 "$install" --to "$repo" >/dev/null 2>&1; [ $? -eq 2 ] && ok || no "accepted a missing --from"
+mkdir -p "$repo/pkg"
+"$install" --from "$dropin" --to "$repo/pkg" >/dev/null 2>&1; [ $? -eq 2 ] && [ -z "$(ls -A "$repo/pkg")" ] && ok || no "installed into a subdirectory instead of the repo root"
 "$install" --from "$dropin" --to "$dropin" >/dev/null 2>&1; [ $? -eq 2 ] && ok || no "accepted source == destination"
 
 printf '\n%s passed, %s failed\n' "$pass" "$fail"
