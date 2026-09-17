@@ -11,8 +11,13 @@
 # List only the files that contain the fix. Never list the test file: reverting it
 # makes the test disappear, and "test not found" is not evidence of anything.
 #
-# The fix is backed up first and restored on every exit path, including Ctrl-C.
-# Git's index, stash, and branches are never touched; only the listed files change.
+# FIX_FILEs must be regular files inside this repository: absolute paths, paths that
+# resolve outside the repo, symlinks, and directories are refused before anything runs.
+# Both content and the executable bit are reverted, so a chmod-only fix can be proven.
+#
+# The fix is backed up first and restored on every exit path, including Ctrl-C and a
+# test that deletes the file's directory. If a restore ever fails, the backup directory
+# is kept and its path printed. Git's index, stash, and branches are never touched.
 #
 # Exit: 0 = PROVEN, 1 = NOT PROVEN, 2 = usage or setup error.
 
@@ -46,8 +51,32 @@ git rev-parse --verify --quiet "$base^{commit}" >/dev/null || die "unknown base 
 
 at_base() { git cat-file -e "$base:./$1" 2>/dev/null; }
 
+# base_mode <path> — git's mode for the path at $base (100644, 100755, 120000), or empty.
+base_mode() { git ls-tree "$base" -- "$1" 2>/dev/null | awk 'NR==1 { print $1 }'; }
+
+# inside_worktree <path> — true only if the path's real location is under the repo root.
+# Resolves the nearest existing parent physically, so neither ../ nor a symlinked
+# directory can point the script at a file outside the repository.
+root="$(cd "$(git rev-parse --show-toplevel)" && pwd -P)" || die "could not resolve the repo root"
+inside_worktree() {
+  local dir
+  dir="$(dirname "$1")"
+  while [ ! -d "$dir" ]; do dir="$(dirname "$dir")"; done
+  dir="$(cd "$dir" && pwd -P)" || return 1
+  case "$dir/" in "$root/"*) return 0 ;; *) return 1 ;; esac
+}
+
+# Everything below rewrites and deletes the listed paths, so refuse anything that is
+# not an ordinary file inside this repository before touching a single byte.
 for p in "${paths[@]}"; do
+  case "$p" in
+    /*) die "$p is outside the work tree; list fix files relative to the repo" ;;
+  esac
+  inside_worktree "$p" || die "$p is outside the work tree; list fix files relative to the repo"
+  [ -L "$p" ] && die "$p is a symlink; list the real file it points to"
+  [ "$(base_mode "$p")" = "120000" ] && die "$p is a symlink at $base; list the real file it points to"
   [ -d "$p" ] && die "$p is a directory; list the fix files individually"
+  [ -e "$p" ] && [ ! -f "$p" ] && die "$p is not a regular file"
   [ -e "$p" ] || at_base "$p" || die "$p exists neither in the work tree nor at $base"
 done
 
@@ -55,18 +84,27 @@ backup="$(mktemp -d "${TMPDIR:-/tmp}/rrr.XXXXXX")" || die "could not create a ba
 restored=0
 keep_backup=0
 
+# restore — put every fix file back. Only marks itself done if every copy succeeded;
+# otherwise the backup directory is kept and its location printed.
 restore() {
   [ "$restored" -eq 1 ] && return 0
-  local i=0 p
+  local i=0 p ok=1
   for p in "${paths[@]}"; do
     if [ -e "$backup/$i" ]; then
-      cp -p "$backup/$i" "$p"
+      # The test may have deleted the file's directory; recreate it.
+      { mkdir -p "$(dirname "$p")" && cp -p "$backup/$i" "$p" && cmp -s "$backup/$i" "$p"; } || ok=0
     else
-      rm -f "$p"
+      rm -f "$p" || ok=0
     fi
     i=$((i + 1))
   done
-  restored=1
+  if [ "$ok" -eq 1 ]; then
+    restored=1
+    return 0
+  fi
+  keep_backup=1
+  printf 'rrr: RESTORE FAILED — your fix files are preserved, numbered in argument order, in %s\n' "$backup" >&2
+  return 1
 }
 
 cleanup() {
@@ -108,10 +146,14 @@ i=0
 for p in "${paths[@]}"; do
   if at_base "$p"; then
     git show "$base:./$p" >"$backup/base" || die "could not read $p at $base"
-    if [ ! -e "$p" ] || ! cmp -s "$backup/base" "$p"; then
+    # A fix can be content, the executable bit, or both; revert both.
+    base_exec=0; [ "$(base_mode "$p")" = "100755" ] && base_exec=1
+    now_exec=0; [ -x "$p" ] && now_exec=1
+    if [ ! -e "$p" ] || ! cmp -s "$backup/base" "$p" || [ "$base_exec" -ne "$now_exec" ]; then
       changed=1
       mkdir -p "$(dirname "$p")"
       cat "$backup/base" >"$p"
+      if [ "$base_exec" -eq 1 ]; then chmod +x "$p"; else chmod -x "$p"; fi
     fi
   elif [ -e "$p" ]; then
     changed=1
@@ -128,14 +170,7 @@ fi
 run_phase "2/3 FIX REVERTED to $base (must FAIL)"
 reverted_code=$?
 
-restore
-i=0
-for p in "${paths[@]}"; do
-  if [ -e "$backup/$i" ]; then
-    cmp -s "$backup/$i" "$p" || { keep_backup=1; die "RESTORE FAILED for $p — your fix is preserved in $backup"; }
-  fi
-  i=$((i + 1))
-done
+restore || exit 2
 
 if [ "$reverted_code" -eq 0 ]; then
   verdict "NOT PROVEN — the test passed with the fix reverted. It does not exercise the bug. The fix has been restored."

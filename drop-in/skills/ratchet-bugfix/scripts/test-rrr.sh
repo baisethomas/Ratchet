@@ -29,6 +29,7 @@ new_repo() {
 }
 
 # check <name> <expected_exit> <expected_text> <rrr args...>
+# Only lib.sh and $fix_file may show as modified (or type-changed) afterwards.
 check() {
   local name="$1" want="$2" text="$3" out got
   shift 3
@@ -40,7 +41,7 @@ check() {
     fail=$((fail + 1)); printf 'FAIL: %s — output lacks "%s"\n%s\n' "$name" "$text" "$out"
   elif ! cmp -s lib.sh "$sandbox/expected"; then
     fail=$((fail + 1)); printf 'FAIL: %s — the fix was not restored byte-for-byte\n' "$name"
-  elif [ -n "$(git status --porcelain --untracked-files=no | grep -v '^ M lib.sh$')" ]; then
+  elif [ -n "$(git status --porcelain --untracked-files=no | grep -Ev "^ [MT] (lib\.sh|${fix_file:-lib\.sh})\$")" ]; then
     fail=$((fail + 1)); printf 'FAIL: %s — git state changed beyond the fix file\n' "$name"
   else
     pass=$((pass + 1))
@@ -79,6 +80,44 @@ echo "== the fix survives an interrupted run =="
 new_repo
 "$rrr" --test 'bash good_test.sh || kill -TERM $PPID' -- lib.sh >/dev/null 2>&1
 if cmp -s lib.sh "$sandbox/expected"; then pass=$((pass + 1)); else fail=$((fail + 1)); echo "FAIL: fix lost when interrupted mid-revert"; fi
+
+echo "== paths that could damage something are refused before anything runs =="
+new_repo
+echo precious >"$sandbox/outside.txt"
+check "absolute path outside the repo" 2 "outside the work tree" --test "true" -- "$sandbox/outside.txt"
+mkdir -p sub
+(cd sub && "$rrr" --test "true" -- ../../outside.txt >/dev/null 2>&1)
+check "relative path escaping the repo" 2 "outside the work tree" --test "true" -- "../outside.txt"
+if [ "$(cat "$sandbox/outside.txt" 2>/dev/null)" = precious ]; then pass=$((pass + 1)); else fail=$((fail + 1)); echo "FAIL: a file outside the repo was modified or removed"; fi
+new_repo
+echo target >real.sh && ln -s real.sh link.sh
+check "symlink fix file" 2 "symlink" --test "true" -- link.sh
+if [ -L link.sh ] && [ "$(cat real.sh)" = target ]; then pass=$((pass + 1)); else fail=$((fail + 1)); echo "FAIL: symlink or its target was changed"; fi
+new_repo
+ln -s missing-target dangling.sh && git add dangling.sh && git commit -qm "dangling link"
+check "tracked dangling symlink" 2 "symlink" --test "true" -- dangling.sh
+if [ -L dangling.sh ] && [ ! -e missing-target ]; then pass=$((pass + 1)); else fail=$((fail + 1)); echo "FAIL: dangling symlink was replaced or its target created"; fi
+new_repo
+echo target >real.sh && ln -s real.sh was_link.sh && git add real.sh was_link.sh && git commit -qm "link"
+rm was_link.sh && echo replaced >was_link.sh
+fix_file=was_link.sh check "regular file now, symlink at base" 2 "symlink at" --test "true" -- was_link.sh
+if [ ! -L was_link.sh ] && [ "$(cat was_link.sh)" = replaced ] && [ "$(cat real.sh)" = target ]; then pass=$((pass + 1)); else fail=$((fail + 1)); echo "FAIL: reverting to a base symlink changed files"; fi
+
+echo "== the fix survives a test that deletes its directory =="
+new_repo
+mkdir -p src && printf 'add() { echo $(( $1 - $2 )); }\n' >src/lib.sh && git add src && git commit -qm "buggy in src"
+printf 'add() { echo $(( $1 + $2 )); }\n' >src/lib.sh && cp src/lib.sh "$sandbox/src.expected"
+printf '. ./src/lib.sh\n[ "$(add 2 3)" = 5 ] || { rm -rf src; exit 1; }\n' >rm_test.sh
+"$rrr" --test "bash rm_test.sh" -- src/lib.sh >/dev/null 2>&1
+if cmp -s src/lib.sh "$sandbox/src.expected"; then pass=$((pass + 1)); else fail=$((fail + 1)); echo "FAIL: fix lost when the test removed its parent directory"; fi
+
+echo "== a fix that only changes the executable bit =="
+new_repo
+git checkout -q lib.sh && cp lib.sh "$sandbox/expected"
+printf '#!/bin/sh\nexit 0\n' >tool.sh && git add tool.sh && git commit -qm "tool not executable"
+chmod +x tool.sh
+fix_file=tool.sh check "mode-only fix" 0 "RRR: PROVEN" --test "test -x tool.sh" -- tool.sh
+if [ -x tool.sh ]; then pass=$((pass + 1)); else fail=$((fail + 1)); echo "FAIL: executable bit was not restored"; fi
 
 echo "== setup errors exit 2 and touch nothing =="
 new_repo

@@ -38,6 +38,8 @@ Run `scripts/rrr.sh` from this skill's directory (`.agents/skills/ratchet-bugfix
 
 It runs the test with the fix (must pass), with the fix files put back to `HEAD` (must **fail**), and with the fix restored (must pass). Your fix is backed up first and restored on every exit path; git's index, stash, and branches are never touched. If the fix is already committed, add `--base <commit-before-the-fix>`.
 
+Fix files must be regular files inside the repo, listed by relative path. The script refuses symlinks, directories, and anything that resolves outside the repository — list the real file instead. A fix that only changes the executable bit counts as a fix.
+
 Then read the phase 2 output yourself. `RRR: PROVEN` only means the exit codes were right. The failure must be the bug's assertion — not an import error, a syntax error, or a missing file, which would mean you reverted something the test needs in order to run at all.
 
 If the verdict is `NOT PROVEN`:
