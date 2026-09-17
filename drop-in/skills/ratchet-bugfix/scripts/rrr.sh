@@ -14,6 +14,10 @@
 # FIX_FILEs must be regular files inside this repository: absolute paths, paths that
 # resolve outside the repo, symlinks, and directories are refused before anything runs.
 # Both content and the executable bit are reverted, so a chmod-only fix can be proven.
+# Containment is re-checked at every write, and the script never writes through an
+# existing path, so a test that swaps a fix file or its directory for a symlink cannot
+# redirect a write outside the repo. This guards against accidents, not against a
+# hostile test command: that command already runs with your full permissions.
 #
 # The fix is backed up first and restored on every exit path, including Ctrl-C and a
 # test that deletes the file's directory. If a restore ever fails, the backup directory
@@ -68,6 +72,26 @@ inside_worktree() {
   case "$dir/" in "$root/"*) return 0 ;; *) return 1 ;; esac
 }
 
+# place <source> <path> — write <source>'s bytes to <path> as a fresh regular file.
+# The test command runs between our checks and our writes and may have replaced a fix
+# file or one of its parent directories with a symlink, so: re-check containment at the
+# moment of writing, and remove whatever is at the path first so nothing is ever written
+# *through* it. rm on a symlink removes the link, not its target.
+place() {
+  inside_worktree "$2" || return 1
+  [ -d "$2" ] && [ ! -L "$2" ] && return 1
+  mkdir -p "$(dirname "$2")" || return 1
+  inside_worktree "$2" || return 1
+  rm -f "$2" && cat "$1" >"$2"
+}
+
+# unplace <path> — remove <path> (file or symlink), only if it is still inside the repo.
+unplace() {
+  inside_worktree "$1" || return 1
+  [ -d "$1" ] && [ ! -L "$1" ] && return 1
+  rm -f "$1"
+}
+
 # Everything below rewrites and deletes the listed paths, so refuse anything that is
 # not an ordinary file inside this repository before touching a single byte.
 for p in "${paths[@]}"; do
@@ -98,10 +122,16 @@ restore() {
   local i=0 p ok=1
   for p in "${paths[@]}"; do
     if [ "${existed[$i]}" -eq 0 ]; then
-      rm -f "$p" || ok=0
+      unplace "$p" || ok=0
     elif [ -f "$backup/$i" ]; then
-      # The test may have deleted the file's directory; recreate it.
-      { mkdir -p "$(dirname "$p")" && cp -p "$backup/$i" "$p" && cmp -s "$backup/$i" "$p"; } || ok=0
+      # The test may have deleted the file's directory (place recreates it) or moved
+      # the path outside the repo (place refuses, and the backup is kept).
+      if place "$backup/$i" "$p" && cmp -s "$backup/$i" "$p"; then
+        if [ -x "$backup/$i" ]; then chmod +x "$p"; else chmod -x "$p"; fi
+      else
+        printf 'rrr: could not safely restore %s (its location now resolves outside the repo, or is a directory)\n' "$p" >&2
+        ok=0
+      fi
     else
       # The backup is gone. Leave the file exactly as it is rather than guess.
       printf 'rrr: the backup of %s is missing; the file was left untouched\n' "$p" >&2
@@ -187,13 +217,12 @@ for p in "${paths[@]}"; do
     now_exec=0; [ -x "$p" ] && now_exec=1
     if [ ! -e "$p" ] || ! cmp -s "$backup/base" "$p" || [ "$base_exec" -ne "$now_exec" ]; then
       changed=1
-      mkdir -p "$(dirname "$p")"
-      cat "$backup/base" >"$p"
+      place "$backup/base" "$p" || die "$p no longer resolves to a regular file inside the repo after the test ran; refusing to write"
       if [ "$base_exec" -eq 1 ]; then chmod +x "$p"; else chmod -x "$p"; fi
     fi
-  elif [ -e "$p" ]; then
+  elif [ -e "$p" ] || [ -L "$p" ]; then
     changed=1
-    rm -f "$p"
+    unplace "$p" || die "$p no longer resolves inside the repo after the test ran; refusing to delete"
   fi
   i=$((i + 1))
 done

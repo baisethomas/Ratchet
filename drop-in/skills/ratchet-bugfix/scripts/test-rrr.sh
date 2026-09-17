@@ -124,6 +124,30 @@ out="$(TMPDIR="$sandbox/tmp" "$rrr" --test 'rm -rf "$TMPDIR"/rrr.* "$(git rev-pa
 code=$?
 if [ "$code" -eq 2 ] && cmp -s lib.sh "$sandbox/expected" && printf '%s' "$out" | grep -q "nothing was reverted"; then pass=$((pass + 1)); else fail=$((fail + 1)); echo "FAIL: test deleted the backup — expected exit 2, the fix intact, and \"nothing was reverted\"; got exit $code"; fi
 
+echo "== a test that swaps a fix path for a symlink cannot redirect writes =="
+new_repo
+echo precious >"$sandbox/victim.txt"
+cat >swap_test.sh <<SWAP
+. ./lib.sh; [ "\$(add 2 3)" = 5 ]; rc=\$?
+[ -e swapped.marker ] || { touch swapped.marker; rm -f lib.sh; ln -s "$sandbox/victim.txt" lib.sh; }
+exit \$rc
+SWAP
+"$rrr" --test "bash swap_test.sh" -- lib.sh >/dev/null 2>&1
+if [ "$(cat "$sandbox/victim.txt")" = precious ]; then pass=$((pass + 1)); else fail=$((fail + 1)); echo "FAIL: wrote through a swapped-in symlink to a file outside the repo"; fi
+if [ ! -L lib.sh ] && cmp -s lib.sh "$sandbox/expected"; then pass=$((pass + 1)); else fail=$((fail + 1)); echo "FAIL: fix not restored as a regular file after a symlink swap"; fi
+new_repo
+mkdir -p src "$sandbox/outdir" && printf 'add() { echo $(( $1 - $2 )); }\n' >src/lib.sh && git add src && git commit -qm "buggy in src"
+printf 'add() { echo $(( $1 + $2 )); }\n' >src/lib.sh
+echo precious >"$sandbox/outdir/lib.sh"
+cat >swapdir_test.sh <<SWAP
+[ -L src ] && exit 1
+. ./src/lib.sh; [ "\$(add 2 3)" = 5 ]; rc=\$?
+mv src src.real && ln -s "$sandbox/outdir" src
+exit \$rc
+SWAP
+"$rrr" --test "bash swapdir_test.sh" -- src/lib.sh >/dev/null 2>&1
+if [ "$(cat "$sandbox/outdir/lib.sh")" = precious ]; then pass=$((pass + 1)); else fail=$((fail + 1)); echo "FAIL: wrote through a swapped-in parent directory to a file outside the repo"; fi
+
 echo "== a fix that only changes the executable bit =="
 new_repo
 git checkout -q lib.sh && cp lib.sh "$sandbox/expected"
