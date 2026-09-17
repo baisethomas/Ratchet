@@ -23,7 +23,7 @@ Ratchet treats the repository as the durable source of truth. Conversation histo
 | `drop-in/review-prompts.md` | Copy-paste prompts for adversarial review and verification | Keep available for manual/fresh-context review passes |
 | `drop-in/claude-code-hooks-settings.json` | Post-edit lint hook, stop-hook test gate, destructive-command guard | Merge into `.claude/settings.json` in the repo; copy `drop-in/hooks/` alongside it |
 | `drop-in/hooks/` | Tested verification/guard scripts | Copy to `.claude/hooks/`, configure, and run `test-hooks.sh` |
-| `drop-in/skills/` | Procedures agents load on their own when the task matches: `ratchet-done` (completion gate: diff audit, checks, RAN / READ / ASSUMED, state refresh) and `ratchet-bugfix` (reproduce, fix, then `rrr.sh` proves the test fails without the fix). Rules stay in `AGENTS.md`; skills only carry the how | Copy to `.agents/skills/` (where Codex looks), symlink `.claude/skills` to it (where Claude Code looks), and run `ratchet-bugfix/scripts/test-rrr.sh` |
+| `drop-in/skills/` | Six procedures agents load on their own when the task matches. `ratchet-done`: completion gate (diff audit, checks, RAN / READ / ASSUMED, state refresh). `ratchet-bugfix`: reproduce, fix, then `rrr.sh` proves the test fails without the fix. `ratchet-review`: hostile review in a fresh context, every finding reproduced before it is acted on, with a stop rule. `ratchet-handoff`: rewrite `STATE.md`, classify and record decisions. `ratchet-tighten`: turn an escaped failure into one permanent fix, a check before a rule. `ratchet-init`: install all of this into a repo with `install.sh`, which never overwrites (user-invoked only). Rules stay in `AGENTS.md`; skills only carry the how. Ideas adapted from Matt Pocock's skills are listed in `drop-in/skills/CREDITS.md` | Run `drop-in/skills/ratchet-init/scripts/install.sh`, or copy to `.agents/skills/` and symlink `.claude/skills` to it. Then run `ratchet-bugfix/scripts/test-rrr.sh` |
 | `drop-in/done-audit-checklist.md` | Short acceptance audit for every nontrivial "done" | Use at final review, especially on high-risk work |
 | `drop-in/graduation-rule.md` | When a recurring workflow graduates from prompts to a pipeline | Apply after a workflow repeats with the same shape |
 | `drop-in/pipeline-skeleton.py` | Example graduated workflow | Use only when the workflow warrants orchestration |
@@ -95,6 +95,8 @@ If the project requires private memory, gitignore `.ratchet/` or use the project
 
 ## Install order
 
+**Shortcut:** `drop-in/skills/ratchet-init/scripts/install.sh --from <ratchet>/drop-in --to <repo> [--claude] [--codex]` does the copying in steps 1–4 and never overwrites an existing file, so it is safe to re-run. Filling the `FILL-ME` slots and merging the hooks block into `.claude/settings.json` are still yours; the `ratchet-init` skill walks an agent through both.
+
 1. **Every active repo:** copy `AGENTS.md` to the root and fill the `FILL-ME` sections. Create `.ratchet/`, copy `STATE.md` and `DECISIONS.md` into it, then initialize them from the branch/workstream's actual current state and already-settled decisions.
 2. **Claude Code, if used:** copy `CLAUDE.md` to the repo root. Keep it a thin adapter that points back to `AGENTS.md`.
    **Codex, if used:** copy `CODEX.md` to the repo root and fill its tier-to-model table. The hooks below do not fire around Codex; the adapter says so and makes the checks explicit.
@@ -112,6 +114,10 @@ At merge/integration, the integrating agent reconciles branch state into one cle
 ## Documentation sync rule
 
 `AGENTS.md`, `PLAYBOOK.md`, README, and any checklist/template that enforces the same workflow must agree on the core invariants. A change to the operating model is incomplete until affected surfaces are aligned. Tool-specific adapters should never become alternate sources of truth.
+
+## Credits
+
+Several ideas in the skills were learned from Matt Pocock's [mattpocock/skills](https://github.com/mattpocock/skills) (MIT) and adapted to Ratchet's contract; `drop-in/skills/CREDITS.md` lists each one and where it came from. His skills cover how to plan and build; Ratchet's cover how to prove the work is done. They install side by side.
 
 ## The one rule that maintains all the others
 

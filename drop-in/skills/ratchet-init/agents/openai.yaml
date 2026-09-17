@@ -1,0 +1,3 @@
+# Codex: never run the installer implicitly. Explicit `$ratchet-init` still works.
+policy:
+  allow_implicit_invocation: false
