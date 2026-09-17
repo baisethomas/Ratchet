@@ -53,6 +53,21 @@ to="$(cd "$to" && pwd -P)"
 root="$(cd "$(git -C "$to" rev-parse --show-toplevel)" && pwd -P)" || die "could not resolve the repo root"
 [ "$to" = "$root" ] || die "$to is a subdirectory; --to must be the repo root ($root). The contract, .ratchet/, and .claude/ belong there"
 
+# Preflight: everything this run will install must be present in the source before a
+# single file is written. An out-of-date or partial checkout otherwise "succeeds" while
+# leaving the repo without its skills or its guards.
+need=("AGENTS.md" "STATE.md" "DECISIONS.md" "skills/")
+[ "$claude" -eq 1 ] && need+=("CLAUDE.md" "hooks/")
+[ "$codex" -eq 1 ] && need+=("CODEX.md")
+absent=""
+for n in "${need[@]}"; do
+  case "$n" in
+    */) { [ -d "$from/$n" ] && [ -n "$(find "$from/$n" -type f | head -n 1)" ]; } || absent="$absent $n" ;;
+    *) [ -f "$from/$n" ] && [ -r "$from/$n" ] || absent="$absent $n" ;;
+  esac
+done
+[ -z "$absent" ] || die "the source $from is missing:$absent — is the Ratchet checkout up to date? Nothing was written"
+
 added=0
 skipped=0
 
@@ -92,11 +107,15 @@ put() {
 # put_tree <source dir> <destination dir relative to $to> — file by file, so an existing
 # directory only gains the files it lacks.
 put_tree() {
-  local f rel
+  local f rel list
+  list="$(find "$1" -type f | sort)" || die "could not read $1"
+  [ -n "$list" ] || die "$1 contains no files"
   while IFS= read -r f; do
     rel="${f#"$1"/}"
     put "$f" "$2/$rel"
-  done < <(find "$1" -type f | sort)
+  done <<LIST
+$list
+LIST
 }
 
 # link <target> <link path relative to $to>
@@ -110,7 +129,7 @@ link() {
 put "$from/AGENTS.md" "AGENTS.md"
 put "$from/STATE.md" ".ratchet/STATE.md"
 put "$from/DECISIONS.md" ".ratchet/DECISIONS.md"
-[ -d "$from/skills" ] && put_tree "$from/skills" ".agents/skills"
+put_tree "$from/skills" ".agents/skills"
 
 if [ "$codex" -eq 1 ]; then
   put "$from/CODEX.md" "CODEX.md"
