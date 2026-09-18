@@ -1,4 +1,5 @@
 {
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
   "name": "ratchet",
   "owner": {
     "name": "Baise Thomas",
@@ -11,7 +12,13 @@
       "source": "./drop-in",
       "description": "Ratchet's six skills plus the destructive-command guard, as a Claude Code plugin. Install the per-repo contract and memory with /ratchet:ratchet-init.",
       "category": "productivity",
-      "keywords": ["verification", "review", "skills", "hooks"]
+      "keywords": [
+        "verification",
+        "review",
+        "skills",
+        "hooks"
+      ],
+      "strict": true
     }
   ]
 }

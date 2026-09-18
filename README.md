@@ -1,5 +1,7 @@
 # Ratchet
 
+[![HOL Guard Scanner](https://img.shields.io/badge/HOL%20Guard-passing-00a67e)](https://github.com/hashgraph-online/hol-guard)
+
 A model-agnostic operating framework for reliable AI-assisted software development.
 
 Ratchet treats the repository, not the conversation, as the durable source of truth. It gives coding agents a consistent operating contract, compressed project state, durable decision history, verification gates, and clear escalation rules so a fresh agent can continue work without relying on chat history.

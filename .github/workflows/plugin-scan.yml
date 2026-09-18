@@ -1,0 +1,20 @@
+# HOL plugin scanner (https://github.com/hashgraph-online/hol-guard), as
+# recommended for listings in hashgraph-online/awesome-ai-plugins. Scans the
+# repo as a marketplace root (the plugin lives in drop-in/). Read-only, no
+# secrets, no network, actions pinned to commit SHAs.
+name: Plugin Security Scan
+on: [pull_request, push]
+permissions:
+  contents: read
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: hashgraph-online/ai-plugin-scanner-action@3b453b4c378e72c3d0007f64f77781c469122d6c # v1.2.690 (plugin-scanner 3.0.190)
+        with:
+          plugin_dir: "."
+          min_score: 80
+          fail_on_severity: high

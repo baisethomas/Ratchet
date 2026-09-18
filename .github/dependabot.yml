@@ -1,0 +1,8 @@
+# Keeps the pinned GitHub Actions in .github/workflows current. Actions are
+# pinned to commit SHAs; Dependabot proposes the bumps and the SHA moves with them.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
