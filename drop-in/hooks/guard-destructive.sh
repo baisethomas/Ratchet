@@ -106,12 +106,14 @@ has_i() { grep -qiE "$1" <<<"$norm"; }
 seg_has() { _seg_has "$norm" "$@"; }
 # seg_has_raw — the same over the unpadded text, for expansion patterns (see has_raw).
 seg_has_raw() { _seg_has "$norm_raw" "$@"; }
+# seg_has_raw_i — case-insensitive variant, for the database tools (PSQL, Prisma).
+seg_has_raw_i() { SEG_I=i _seg_has "$norm_raw" "$@"; }
 _seg_has() {
   local text="$1" seg p ok
   shift
   while IFS= read -r seg; do
     ok=1
-    for p in "$@"; do grep -qE "$p" <<<"$seg" || { ok=0; break; }; done
+    for p in "$@"; do grep -q${SEG_I:-}E "$p" <<<"$seg" || { ok=0; break; }; done
     [ "$ok" -eq 1 ] && return 0
   done <<<"$(printf '%s' "$text" | sed 's/[;&|][;&|]*/\
 /g')"
@@ -181,7 +183,7 @@ has_raw "git[[:space:]]+${GIT_GLOBALS}[^[:space:];&|]*(\\\$|${BRACE})" \
 { seg_has_raw "$(git_sub '(push|reset|branch|clean|filter-branch|filter-repo)')" "$EXPANSION" \
   || seg_has_raw '(^|[[:space:]])rm([[:space:]]|$)' "$EXPANSION" \
   || seg_has_raw '(^|[[:space:]])(curl|wget|scp|rsync|sftp)([[:space:]]|$)' "$EXPANSION" \
-  || { has_i 'psql|mysql|prisma|drizzle-kit|db:migrate' && has_raw "$EXPANSION"; }; } \
+  || seg_has_raw_i 'psql|mysql|prisma|drizzle-kit|db:migrate' "$EXPANSION"; } \
   && block "a destructive-family or outbound command with shell expansion in its arguments, which cannot be checked"
 
 seg_has "$(git_sub push)" "$FORCE_FLAG" \
