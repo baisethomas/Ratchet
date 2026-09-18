@@ -8,6 +8,14 @@
   },
   "homepage": "https://github.com/baisethomas/Ratchet",
   "repository": "https://github.com/baisethomas/Ratchet",
-  "keywords": ["verification", "review", "skills", "hooks", "agents-md", "codex"],
+  "license": "MIT",
+  "keywords": [
+    "verification",
+    "review",
+    "skills",
+    "hooks",
+    "agents-md",
+    "codex"
+  ],
   "hooks": "./plugin-hooks.json"
 }
