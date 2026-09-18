@@ -53,6 +53,13 @@ assert_guard 2 'cd repo && git branch -d feature'
 assert_guard 2 'git branch -D feature && echo gone'
 assert_guard 2 'true; git push --force; true'
 assert_guard 2 'ls | xargs rm -rf'
+# A quoted or escaped operator is argument text, not a command boundary.
+assert_guard 2 'git push "topic&note" --force'
+assert_guard 2 "git push 'origin;stillarg' --force"
+assert_guard 2 'git branch "a;b" -d feature'
+assert_guard 2 'rm "a|b" -rf'
+assert_guard 2 'git push a\;b --force'
+assert_guard 2 'git push "unbalanced --force'
 assert_guard 2 'psql -c "$Q"'
 assert_guard 2 'true && PSQL -f "$F"'
 # Flag immediately after the subcommand (the only forms the original regex caught)

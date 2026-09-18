@@ -103,11 +103,55 @@ has_i() { grep -qiE "$1" <<<"$norm"; }
 # && ls -d .claude` contains `git branch` and a later `-d`, but no branch
 # deletion. Segments are split on ; & | (padded into their own tokens above), so
 # `cd dir && git branch -d x` still sees the flag next to its subcommand.
-seg_has() { _seg_has "$norm" "$@"; }
+# Segment boundaries are found on the ORIGINAL text, before quotes are stripped:
+# `git push "topic&note" --force` is one command, and splitting the stripped text
+# on `&` would put the flag in a different segment and let the push through. Only
+# a `;`, `&`, `|` or newline that is outside quotes and not backslash-escaped is a
+# boundary. If the quoting never closes, nothing is split: the whole line is one
+# segment, which can only over-block, never under-block.
+SEP=$'\x1f'
+# awk rather than a bash character loop, which is quadratic on long commands.
+# FAIL CLOSED: if awk is missing or the scan fails, or the command is over 64 KB
+# (a heredoc payload; the scan would take seconds), nothing is split and the whole
+# line is one segment — exactly the whole-line matching these rules had before,
+# which can only over-block. An empty result here must never mean "no segments".
+segmented=$(printf '%s' "$command" | awk -v SEP="$SEP" '
+  BEGIN { RS = "\001"; q = ""; esc = 0; out = "" }
+  {
+    text = $0
+    gsub(/\\\n/, "", text)                    # line continuations join their tokens
+    n = length(text); start = 1
+    if (n > 65536) { printf "%s", text; exit }
+    # Copy runs, not characters: appending one char at a time is quadratic on
+    # some awks, and a 200 KB command must still be checked in milliseconds.
+    for (i = 1; i <= n; i++) {
+      c = substr(text, i, 1)
+      if (esc) { esc = 0; continue }
+      if (c == "\\") { if (q != "\047") esc = 1; continue }
+      if (c == "\047") { if (q != "\"") q = (q == "" ? "\047" : ""); continue }
+      if (c == "\"") { if (q != "\047") q = (q == "" ? "\"" : ""); continue }
+      if ((c == ";" || c == "&" || c == "|" || c == "\n") && q == "") {
+        out = out substr(text, start, i - start) SEP; start = i + 1
+      }
+    }
+    out = out substr(text, start)
+  }
+  END { if (q != "") gsub(SEP, " ", out); printf "%s", out }' 2>/dev/null)
+if [ $? -ne 0 ] || { [ -z "$segmented" ] && [ -n "$command" ]; }; then
+  segmented=$command
+fi
+# Then the same normalization the whole-line checks use, per segment.
+seg_raw=${segmented//$'\n'/ }
+seg_raw=${seg_raw//\\/}
+seg_raw=${seg_raw//\"/}
+seg_raw=${seg_raw//\'/}
+seg_pad=$(printf '%s' "$seg_raw" | sed 's/[;|&()<>]/ & /g')
+
+seg_has() { _seg_has "$seg_pad" "$@"; }
 # seg_has_raw — the same over the unpadded text, for expansion patterns (see has_raw).
-seg_has_raw() { _seg_has "$norm_raw" "$@"; }
+seg_has_raw() { _seg_has "$seg_raw" "$@"; }
 # seg_has_raw_i — case-insensitive variant, for the database tools (PSQL, Prisma).
-seg_has_raw_i() { SEG_I=i _seg_has "$norm_raw" "$@"; }
+seg_has_raw_i() { SEG_I=i _seg_has "$seg_raw" "$@"; }
 _seg_has() {
   local text="$1" seg p ok
   shift
@@ -115,8 +159,7 @@ _seg_has() {
     ok=1
     for p in "$@"; do grep -q${SEG_I:-}E "$p" <<<"$seg" || { ok=0; break; }; done
     [ "$ok" -eq 1 ] && return 0
-  done <<<"$(printf '%s' "$text" | sed 's/[;&|][;&|]*/\
-/g')"
+  done <<<"${text//$SEP/$'\n'}"
   return 1
 }
 # Expansion checks run against the unpadded text: padding separates `$` from
@@ -145,6 +188,8 @@ if [[ "$norm" =~ (^|[[:space:]])git[[:space:]]+((-[^[:space:]]+[[:space:]]+)*)([
   if [ -n "${alias_expansion:-}" ]; then
     norm="${norm/git $git_subcmd/git $alias_expansion}"
     norm_raw="${norm_raw/git $git_subcmd/git $alias_expansion}"
+    seg_raw="${seg_raw/git $git_subcmd/git $alias_expansion}"
+    seg_pad="${seg_pad/git $git_subcmd/git $alias_expansion}"
   fi
 fi
 

@@ -8,9 +8,10 @@
 #          .claude/skills (one symlink to ../.agents/skills, or one link per skill if
 #          .claude/skills already exists as a real directory).
 # --plugin (with --claude) means the Ratchet plugin is enabled in Claude Code here, so
-#          the skills and the destructive-command guard already come from it: the
-#          .claude/skills link and .claude/hooks/guard-destructive.sh are not installed,
-#          which avoids every skill showing twice and the guard running twice.
+#          the skills already come from it: the .claude/skills link is not made, which
+#          avoids every skill showing twice. The guard script is still copied, because
+#          test-hooks.sh exercises it; just do not wire it into settings.json (the
+#          plugin runs it), or it runs twice.
 # --codex  adds CODEX.md.
 #
 # --to must be the repo root. Anything that already exists at a destination — file,
@@ -128,7 +129,6 @@ put_tree() {
   [ -n "$list" ] || die "$1 contains no files"
   while IFS= read -r f; do
     rel="${f#"$1"/}"
-    if [ "$plugin" -eq 1 ] && [ "$rel" = "guard-destructive.sh" ]; then continue; fi
     put "$f" "$2/$rel"
   done <<LIST
 $list
@@ -156,7 +156,7 @@ if [ "$claude" -eq 1 ]; then
   put "$from/CLAUDE.md" "CLAUDE.md"
   put_tree "$from/hooks" ".claude/hooks"
   if [ "$plugin" -eq 1 ]; then
-    printf 'PLUG  .claude/skills and .claude/hooks/guard-destructive.sh come from the Ratchet plugin; not installed\n'
+    printf 'PLUG  .claude/skills not linked: the plugin provides the skills. Do not wire guard-destructive.sh into settings.json either; the plugin runs it\n'
   elif [ -d "$to/.claude/skills" ] && [ ! -L "$to/.claude/skills" ]; then
     # A real directory is already there: add one link per Ratchet skill beside what it holds.
     for d in "$from"/skills/*/; do
