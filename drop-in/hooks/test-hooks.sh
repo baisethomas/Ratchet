@@ -361,6 +361,13 @@ printf '## Decision format\n- **Decision:** FILL-ME\n## Decisions\n### D-1 — u
 assert_mem 2 'FILL-ME inside a recorded decision'
 printf '## Decisions\n### D-1 — use X\n- **Why:** because\n' > "$memdir/.ratchet/DECISIONS.md"
 assert_mem 0 'decisions filled in'
+# A renamed heading must not hide the placeholders; without the marker, check the whole file.
+printf '## Accepted decisions\n### D-1 — use X\n- **Why:** FILL-ME\n' > "$memdir/.ratchet/DECISIONS.md"
+assert_mem 2 'FILL-ME with the Decisions heading renamed'
+# A ledger larger than a pipe buffer with the placeholder at the top: grep must not
+# exit early and turn the match into a pipefail false negative.
+{ printf '## Decisions\n- **Why:** FILL-ME\n'; yes 'line of recorded decision text' | head -n 8000; } > "$memdir/.ratchet/DECISIONS.md"
+assert_mem 2 'FILL-ME at the top of a 200 KB ledger'
 out=$(echo '{"session_id":"memmsg'$$'"}' | TMPDIR="$memstate" CLAUDE_PROJECT_DIR="$memdir" sh -c 'printf "## Objective\nFILL-ME\n" > "$CLAUDE_PROJECT_DIR/.ratchet/STATE.md"; "$CLAUDE_PROJECT_DIR/check-on-stop.sh"' 2>&1)
 printf '%s' "$out" | grep -q "STATE.md" && pass=$((pass + 1)) || { fail=$((fail + 1)); echo "FAIL: the block message should name the file with the leftover FILL-ME"; }
 rm -rf "$memdir" "$memstate"

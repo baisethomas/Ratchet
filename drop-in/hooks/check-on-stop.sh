@@ -103,9 +103,18 @@ if [ -f .ratchet/STATE.md ] && grep -n 'FILL-ME' .ratchet/STATE.md >/dev/null 2>
   memory_gaps="${memory_gaps}--- .ratchet/STATE.md still contains FILL-ME ---"$'\n'"$(grep -n 'FILL-ME' .ratchet/STATE.md | head -10)"$'\n'
 fi
 if [ -f .ratchet/DECISIONS.md ]; then
-  recorded=$(awk 'found { print } /^## Decisions/ { found = 1 }' .ratchet/DECISIONS.md)
-  if printf '%s' "$recorded" | grep -q 'FILL-ME'; then
-    memory_gaps="${memory_gaps}--- .ratchet/DECISIONS.md has FILL-ME inside a recorded decision ---"$'\n'"$(printf '%s' "$recorded" | grep -n 'FILL-ME' | head -10)"$'\n'
+  # No "## Decisions" marker (renamed, removed): check the whole file rather than
+  # nothing, so a renamed heading cannot hide the placeholders.
+  if grep -q '^## Decisions' .ratchet/DECISIONS.md; then
+    recorded=$(awk 'found { print } /^## Decisions/ { found = 1 }' .ratchet/DECISIONS.md)
+  else
+    recorded=$(cat .ratchet/DECISIONS.md)
+  fi
+  # grep without -q: under pipefail, a grep that exits on the first match can leave
+  # printf with SIGPIPE on a large ledger, and the pipeline reads as "no match".
+  hits=$(printf '%s' "$recorded" | grep -n 'FILL-ME' | head -10)
+  if [ -n "$hits" ]; then
+    memory_gaps="${memory_gaps}--- .ratchet/DECISIONS.md has FILL-ME inside a recorded decision ---"$'\n'"${hits}"$'\n'
   fi
 fi
 if [ -n "$memory_gaps" ]; then
