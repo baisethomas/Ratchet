@@ -60,6 +60,9 @@ assert_guard 2 'git branch "a;b" -d feature'
 assert_guard 2 'rm "a|b" -rf'
 assert_guard 2 'git push a\;b --force'
 assert_guard 2 'git push "unbalanced --force'
+# The segmenter's internal delimiter is a legal input byte; it must not split anything.
+assert_guard 2 $'git push \x1f --force'
+assert_guard 2 $'git branch \x1f -D old'
 assert_guard 2 'psql -c "$Q"'
 assert_guard 2 'true && PSQL -f "$F"'
 # Flag immediately after the subcommand (the only forms the original regex caught)

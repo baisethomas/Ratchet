@@ -115,7 +115,11 @@ SEP=$'\x1f'
 # (a heredoc payload; the scan would take seconds), nothing is split and the whole
 # line is one segment — exactly the whole-line matching these rules had before,
 # which can only over-block. An empty result here must never mean "no segments".
-segmented=$(printf '%s' "$command" | awk -v SEP="$SEP" '
+# The delimiter is a legal input byte. If the command already contains it, the
+# scanner cannot tell input from boundary, so nothing is split (whole line).
+case "$command" in
+  *"$SEP"*) segmented=${command//$SEP/ } ;;
+  *) segmented=$(printf '%s' "$command" | awk -v SEP="$SEP" '
   BEGIN { RS = "\001"; q = ""; esc = 0; out = "" }
   {
     text = $0
@@ -136,10 +140,9 @@ segmented=$(printf '%s' "$command" | awk -v SEP="$SEP" '
     }
     out = out substr(text, start)
   }
-  END { if (q != "") gsub(SEP, " ", out); printf "%s", out }' 2>/dev/null)
-if [ $? -ne 0 ] || { [ -z "$segmented" ] && [ -n "$command" ]; }; then
-  segmented=$command
-fi
+  END { if (q != "") gsub(SEP, " ", out); printf "%s", out }' 2>/dev/null) || segmented=$command
+     [ -z "$segmented" ] && [ -n "$command" ] && segmented=$command ;;
+esac
 # Then the same normalization the whole-line checks use, per segment.
 seg_raw=${segmented//$'\n'/ }
 seg_raw=${seg_raw//\\/}
