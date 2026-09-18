@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Stop hook: run the repo's verification before Claude is allowed to finish, so
-# a red suite surfaces at "done" time instead of after merge.
+# a red suite surfaces at "done" time instead of after merge. Also refuses to
+# finish while .ratchet/STATE.md or a recorded decision still says FILL-ME.
 #
 # Contract (https://code.claude.com/docs/en/hooks):
 #   - exit 2 prevents Claude from stopping and feeds stderr back to it
@@ -92,6 +93,25 @@ for check in "${CHECKS[@]}"; do
     report="${report}--- ${check} ---"$'\n'"$(printf '%s' "$out" | tail -20)"$'\n'
   fi
 done
+
+# Project memory left as a template is not done. A leftover FILL-ME is a fixed
+# pattern, so it gets a check here rather than a rule the model has to remember.
+# STATE.md is checked whole. DECISIONS.md keeps FILL-ME in its "Decision format"
+# example by design, so only the part from "## Decisions" onward is checked.
+memory_gaps=""
+if [ -f .ratchet/STATE.md ] && grep -n 'FILL-ME' .ratchet/STATE.md >/dev/null 2>&1; then
+  memory_gaps="${memory_gaps}--- .ratchet/STATE.md still contains FILL-ME ---"$'\n'"$(grep -n 'FILL-ME' .ratchet/STATE.md | head -10)"$'\n'
+fi
+if [ -f .ratchet/DECISIONS.md ]; then
+  recorded=$(awk 'found { print } /^## Decisions/ { found = 1 }' .ratchet/DECISIONS.md)
+  if printf '%s' "$recorded" | grep -q 'FILL-ME'; then
+    memory_gaps="${memory_gaps}--- .ratchet/DECISIONS.md has FILL-ME inside a recorded decision ---"$'\n'"$(printf '%s' "$recorded" | grep -n 'FILL-ME' | head -10)"$'\n'
+  fi
+fi
+if [ -n "$memory_gaps" ]; then
+  fail=1
+  report="${report}${memory_gaps}Fill these in from the branch's real state (the ratchet-handoff skill does this), or remove the placeholder line."$'\n'
+fi
 
 if [ "$fail" -eq 0 ]; then
   [ -n "$counter" ] && rm -f "$counter"

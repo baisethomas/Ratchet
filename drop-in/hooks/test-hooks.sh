@@ -339,6 +339,32 @@ assert_stop 2 "{\"session_id\":\"${sid}c\"}" 'cap attempt 3'
 assert_stop 0 "{\"session_id\":\"${sid}c\"}" 'cap released on attempt 4'
 rm -rf "$stopstate"
 
+echo "== stop gate: project memory left as a template is not done =="
+memdir=$(mktemp -d); cp ./check-on-stop.sh ./lib-payload.sh "$memdir/"
+memstate=$(mktemp -d)
+printf '{"name":"f","version":"1.0.0","scripts":{"lint":"echo ok","test":"echo ok"}}' > "$memdir/package.json"
+assert_mem() {
+  local expected="$1" label="$2" actual
+  echo "{\"session_id\":\"mem$$-$RANDOM\"}" | TMPDIR="$memstate" CLAUDE_PROJECT_DIR="$memdir" "$memdir/check-on-stop.sh" >/dev/null 2>&1
+  actual=$?
+  if [ "$actual" -eq "$expected" ]; then pass=$((pass + 1)); else fail=$((fail + 1)); printf 'FAIL: expected exit %s, got %s for: %s\n' "$expected" "$actual" "$label"; fi
+}
+assert_mem 0 'no .ratchet directory: nothing to check'
+mkdir -p "$memdir/.ratchet"
+printf '# State\n## Objective\nFILL-ME\n' > "$memdir/.ratchet/STATE.md"
+assert_mem 2 'STATE.md still has FILL-ME'
+printf '# State\n## Objective\nShip the thing\n' > "$memdir/.ratchet/STATE.md"
+assert_mem 0 'STATE.md filled in'
+printf '## Decision format\n### D-YYYYMMDD — FILL-ME: title\n- **Decision:** FILL-ME\n## Decisions\n' > "$memdir/.ratchet/DECISIONS.md"
+assert_mem 0 'FILL-ME in the DECISIONS.md format example is the template, not a gap'
+printf '## Decision format\n- **Decision:** FILL-ME\n## Decisions\n### D-1 — use X\n- **Why:** FILL-ME\n' > "$memdir/.ratchet/DECISIONS.md"
+assert_mem 2 'FILL-ME inside a recorded decision'
+printf '## Decisions\n### D-1 — use X\n- **Why:** because\n' > "$memdir/.ratchet/DECISIONS.md"
+assert_mem 0 'decisions filled in'
+out=$(echo '{"session_id":"memmsg'$$'"}' | TMPDIR="$memstate" CLAUDE_PROJECT_DIR="$memdir" sh -c 'printf "## Objective\nFILL-ME\n" > "$CLAUDE_PROJECT_DIR/.ratchet/STATE.md"; "$CLAUDE_PROJECT_DIR/check-on-stop.sh"' 2>&1)
+printf '%s' "$out" | grep -q "STATE.md" && pass=$((pass + 1)) || { fail=$((fail + 1)); echo "FAIL: the block message should name the file with the leftover FILL-ME"; }
+rm -rf "$memdir" "$memstate"
+
 echo "== stop gate: an unpersistable counter must not trap the session =="
 # Without state the cap can never be reached, so the fallback bound applies.
 trapdir=$(mktemp -d)
