@@ -11,6 +11,17 @@ cd "$(dirname "$0")"
 pass=0
 fail=0
 
+# stage_stop_hook <dir>/ — copy the stop hook and its library into a scratch dir
+# with CHECKS pinned to the npm commands these tests drive through a fake
+# package.json. The real hook's CHECKS line is whatever the repo filled in, and
+# that must not decide whether this suite passes.
+stage_stop_hook() {
+  local dir="${1%/}"
+  sed 's/^CHECKS=.*/CHECKS=("npm run lint --silent" "npm test --silent")/' ./check-on-stop.sh > "$dir/check-on-stop.sh"
+  chmod +x "$dir/check-on-stop.sh"
+  cp ./lib-payload.sh "$dir/"
+}
+
 # JSON-encode a string without assuming jq: the hooks support node as a parser,
 # so the suite that validates them must run in a node-only environment too.
 json_str() {
@@ -38,6 +49,31 @@ assert_guard() {
 }
 
 echo "== destructive-command guard: must BLOCK (exit 2) =="
+assert_guard 2 'cd repo && git branch -d feature'
+assert_guard 2 'git branch -D feature && echo gone'
+assert_guard 2 'true; git push --force; true'
+assert_guard 2 'ls | xargs rm -rf'
+# A quoted or escaped operator is argument text, not a command boundary.
+assert_guard 2 'git push "topic&note" --force'
+assert_guard 2 "git push 'origin;stillarg' --force"
+assert_guard 2 'git branch "a;b" -d feature'
+assert_guard 2 'rm "a|b" -rf'
+assert_guard 2 'git push a\;b --force'
+assert_guard 2 'git push "unbalanced --force'
+# The segmenter's internal delimiter is a legal input byte; it must not split anything.
+assert_guard 2 $'git push \x1f --force'
+assert_guard 2 $'git branch \x1f -D old'
+# An operator inside a process substitution or subshell is not a command boundary.
+assert_guard 2 'git push >(echo a;echo b) --force'
+assert_guard 2 'git push <(a|b) --force'
+assert_guard 2 $'git push <(a\n b) --force'
+assert_guard 2 'git push origin >(a;b) --delete main'
+assert_guard 2 'git reset >(a;b) --hard'
+assert_guard 2 'git branch >(a;b) -D main'
+assert_guard 2 'rm >(echo a;echo b) -rf x'
+assert_guard 2 'git push (a;b --force'
+assert_guard 2 'psql -c "$Q"'
+assert_guard 2 'true && PSQL -f "$F"'
 # Flag immediately after the subcommand (the only forms the original regex caught)
 assert_guard 2 'git push --force'
 assert_guard 2 'git push -f'
@@ -76,6 +112,17 @@ assert_guard 2 'echo hi && git push origin --force'
 
 echo "== destructive-command guard: must ALLOW (exit 0) =="
 assert_guard 0 'git push origin main'
+# Flags belong to the command they follow, not to the whole line.
+assert_guard 0 'git branch --show-current && ls -d .claude'
+assert_guard 0 'git push origin main && rm -f tmp.txt'
+assert_guard 0 'git reset; echo --hard'
+assert_guard 0 'git clean -n | grep -f patterns'
+assert_guard 0 'rm -r build && touch -f marker'
+assert_guard 0 'git push origin main && echo "$HOME"'
+assert_guard 0 'echo psql && echo "$HOME"'
+assert_guard 0 'echo mysql; echo "$PWD"'
+assert_guard 0 'diff <(git show a) <(git show b)'
+assert_guard 0 '(git branch --show-current) && ls -d .claude'
 assert_guard 0 'git push'
 assert_guard 0 'git status'
 assert_guard 0 'npm test'
@@ -297,7 +344,7 @@ if [ $? -eq 2 ]; then pass=$((pass + 1)); else fail=$((fail + 1)); echo "FAIL: l
 
 # The stop gate does not need the payload: it must still run the checks.
 noparser_stopdir=$(mktemp -d)
-cp ./check-on-stop.sh ./lib-payload.sh "$noparser_stopdir/"
+stage_stop_hook "$noparser_stopdir/"
 printf '{"name":"f","version":"1.0.0","scripts":{"lint":"exit 1","test":"exit 1"}}' > "$noparser_stopdir/package.json"
 # Isolate the gate's counter: it lives under TMPDIR and persists between runs,
 # so a shared location would carry a previous run's count into this assertion.
@@ -308,7 +355,7 @@ rm -rf "$noparser_state" "$noparser_stopdir" "$shimdir"
 
 echo "== stop gate: must re-check even when stop_hook_active is set =="
 stopdir=$(mktemp -d)
-cp ./check-on-stop.sh ./lib-payload.sh "$stopdir/"
+stage_stop_hook "$stopdir/"
 stopstate=$(mktemp -d)   # per-run counter state, see note above
 assert_stop() {
   local expected="$1" payload="$2" label="$3" actual
@@ -340,7 +387,7 @@ assert_stop 0 "{\"session_id\":\"${sid}c\"}" 'cap released on attempt 4'
 rm -rf "$stopstate"
 
 echo "== stop gate: project memory left as a template is not done =="
-memdir=$(mktemp -d); cp ./check-on-stop.sh ./lib-payload.sh "$memdir/"
+memdir=$(mktemp -d); stage_stop_hook "$memdir/"
 memstate=$(mktemp -d)
 printf '{"name":"f","version":"1.0.0","scripts":{"lint":"echo ok","test":"echo ok"}}' > "$memdir/package.json"
 assert_mem() {
@@ -375,7 +422,7 @@ rm -rf "$memdir" "$memstate"
 echo "== stop gate: an unpersistable counter must not trap the session =="
 # Without state the cap can never be reached, so the fallback bound applies.
 trapdir=$(mktemp -d)
-cp ./check-on-stop.sh ./lib-payload.sh "$trapdir/"
+stage_stop_hook "$trapdir/"
 printf '{"name":"f","version":"1.0.0","scripts":{"lint":"exit 1","test":"exit 1"}}' > "$trapdir/package.json"
 rodir=$(mktemp -d); chmod 500 "$rodir"
 trapstop() {
@@ -445,7 +492,7 @@ fi
 echo "== stop gate: unreachable project dir must not read as success =="
 # Releasing here would report verification for checks that never ran.
 badproj=$(mktemp -d); baddir="$badproj/does-not-exist"
-gatedir=$(mktemp -d); cp ./check-on-stop.sh ./lib-payload.sh "$gatedir/"
+gatedir=$(mktemp -d); stage_stop_hook "$gatedir/"
 badstate=$(mktemp -d)
 echo '{"session_id":"badcwd"}' | TMPDIR="$badstate" CLAUDE_PROJECT_DIR="$baddir" "$gatedir/check-on-stop.sh" >/dev/null 2>&1
 [ $? -eq 2 ] && pass=$((pass + 1)) || { fail=$((fail + 1)); echo "FAIL: unreachable project dir should block"; }
@@ -455,7 +502,7 @@ rm -rf "$badproj" "$gatedir" "$badstate"
 
 echo "== stop gate: a swapped counter symlink must not be written through =="
 # rename(2) replaces the entry; a redirect would follow the symlink instead.
-symproj=$(mktemp -d); cp ./check-on-stop.sh ./lib-payload.sh "$symproj/"
+symproj=$(mktemp -d); stage_stop_hook "$symproj/"
 printf '{"name":"f","version":"1.0.0","scripts":{"lint":"exit 1","test":"exit 1"}}' > "$symproj/package.json"
 symstate=$(mktemp -d)
 victim=$(mktemp); printf 'PRECIOUS\n' > "$victim"
@@ -475,7 +522,7 @@ echo "== stop gate: a loose state dir must be tightened before use =="
 # A pre-existing world-writable dir must not be used as-is. Refusal on FOREIGN
 # ownership cannot be exercised here (the suite runs as the owning user), so
 # this asserts the part that is observable: perms end up private.
-looseproj=$(mktemp -d); cp ./check-on-stop.sh ./lib-payload.sh "$looseproj/"
+looseproj=$(mktemp -d); stage_stop_hook "$looseproj/"
 printf '{"name":"f","version":"1.0.0","scripts":{"lint":"exit 1","test":"exit 1"}}' > "$looseproj/package.json"
 loosestate=$(mktemp -d)
 loosedir="$loosestate/claude-stop-gate.$(id -u)"
@@ -489,7 +536,7 @@ else
   fail=$((fail + 1)); echo "FAIL: loose state dir not tightened (exit=$code perms=$perm_after)"
 fi
 # A state dir that cannot be made private is dropped rather than used.
-nodir=$(mktemp -d); cp ./check-on-stop.sh ./lib-payload.sh "$nodir/"
+nodir=$(mktemp -d); stage_stop_hook "$nodir/"
 printf '{"name":"f","version":"1.0.0","scripts":{"lint":"exit 1","test":"exit 1"}}' > "$nodir/package.json"
 nostate=$(mktemp -d)
 : > "$nostate/claude-stop-gate.$(id -u)"   # a regular file where the dir belongs

@@ -72,6 +72,17 @@ mkdir -p "$repo/.claude/skills/mine" && echo "mine" >"$repo/.claude/skills/mine/
 [ ! -L "$repo/.claude/skills" ] && [ "$(cat "$repo/.claude/skills/mine/SKILL.md")" = "mine" ] && ok || no "existing .claude/skills was replaced"
 [ -L "$repo/.claude/skills/ratchet-done" ] && [ -f "$repo/.claude/skills/ratchet-done/SKILL.md" ] && ok || no "per-skill link missing or dangling"
 
+echo "== --plugin: skills and the guard come from the plugin, so neither is installed =="
+new_repo
+out="$("$install" --from "$dropin" --to "$repo" --claude --plugin 2>&1)"; code=$?
+[ "$code" -eq 0 ] && [ ! -e "$repo/.claude/skills" ] && ok || no "--plugin still installed the skills link (exit $code)"
+# The guard file must still be present: test-hooks.sh exercises it. Not wiring it into settings is the skill's job.
+[ -x "$repo/.claude/hooks/guard-destructive.sh" ] && (cd "$repo" && .claude/hooks/test-hooks.sh >/dev/null 2>&1) && ok || no "--plugin install cannot run its own hooks suite"
+[ -f "$repo/.claude/hooks/check-on-stop.sh" ] && [ -f "$repo/.claude/hooks/lib-payload.sh" ] && [ -f "$repo/.agents/skills/ratchet-done/SKILL.md" ] && ok || no "--plugin dropped hooks or skills it should still install"
+printf '%s' "$out" | grep -q "^PLUG" && printf '%s' "$out" | grep -q "^FROM  $dropin" && ok || no "--plugin should say what it left to the plugin and echo the resolved source"
+new_repo
+"$install" --from "$dropin" --to "$repo" --plugin >/dev/null 2>&1; [ $? -eq 2 ] && [ -z "$(ls -A "$repo" | grep -v "^.git$")" ] && ok || no "--plugin without --claude should be a usage error that writes nothing"
+
 echo "== a symlink at a destination is never written through =="
 new_repo
 echo precious >"$sandbox/outside.md" && ln -s "$sandbox/outside.md" "$repo/AGENTS.md"
