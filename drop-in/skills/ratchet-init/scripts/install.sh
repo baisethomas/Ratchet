@@ -1,12 +1,16 @@
 #!/usr/bin/env bash
 # Install Ratchet's drop-in files into a repository without overwriting anything.
 #
-#   install.sh --from <ratchet>/drop-in --to <repo root> [--claude] [--codex]
+#   install.sh --from <ratchet>/drop-in --to <repo root> [--claude [--plugin]] [--codex]
 #
 # Always installs: AGENTS.md, .ratchet/STATE.md, .ratchet/DECISIONS.md, .agents/skills/*.
 # --claude adds CLAUDE.md, .claude/hooks/*, and makes the skills visible under
 #          .claude/skills (one symlink to ../.agents/skills, or one link per skill if
 #          .claude/skills already exists as a real directory).
+# --plugin (with --claude) means the Ratchet plugin is enabled in Claude Code here, so
+#          the skills and the destructive-command guard already come from it: the
+#          .claude/skills link and .claude/hooks/guard-destructive.sh are not installed,
+#          which avoids every skill showing twice and the guard running twice.
 # --codex  adds CODEX.md.
 #
 # --to must be the repo root. Anything that already exists at a destination — file,
@@ -24,6 +28,7 @@ from=""
 to=""
 claude=0
 codex=0
+plugin=0
 
 usage() {
   sed -n '2,5p' "$0" | sed 's/^# \{0,1\}//' >&2
@@ -36,6 +41,7 @@ while [ $# -gt 0 ]; do
     --to) [ $# -ge 2 ] || usage; to="$2"; shift 2 ;;
     --claude) claude=1; shift ;;
     --codex) codex=1; shift ;;
+    --plugin) plugin=1; shift ;;
     *) usage ;;
   esac
 done
@@ -43,6 +49,7 @@ done
 die() { printf 'install: %s\n' "$1" >&2; exit 2; }
 
 [ -n "$from" ] && [ -n "$to" ] || usage
+[ "$plugin" -eq 1 ] && [ "$claude" -eq 0 ] && usage
 [ -f "$from/AGENTS.md" ] || die "$from does not look like Ratchet's drop-in directory (no AGENTS.md)"
 [ -d "$to" ] || die "$to is not a directory"
 git -C "$to" rev-parse --is-inside-work-tree >/dev/null 2>&1 || die "$to is not inside a git work tree"
@@ -121,6 +128,7 @@ put_tree() {
   [ -n "$list" ] || die "$1 contains no files"
   while IFS= read -r f; do
     rel="${f#"$1"/}"
+    if [ "$plugin" -eq 1 ] && [ "$rel" = "guard-destructive.sh" ]; then continue; fi
     put "$f" "$2/$rel"
   done <<LIST
 $list
@@ -147,7 +155,9 @@ fi
 if [ "$claude" -eq 1 ]; then
   put "$from/CLAUDE.md" "CLAUDE.md"
   put_tree "$from/hooks" ".claude/hooks"
-  if [ -d "$to/.claude/skills" ] && [ ! -L "$to/.claude/skills" ]; then
+  if [ "$plugin" -eq 1 ]; then
+    printf 'PLUG  .claude/skills and .claude/hooks/guard-destructive.sh come from the Ratchet plugin; not installed\n'
+  elif [ -d "$to/.claude/skills" ] && [ ! -L "$to/.claude/skills" ]; then
     # A real directory is already there: add one link per Ratchet skill beside what it holds.
     for d in "$from"/skills/*/; do
       [ -d "$d" ] || continue
@@ -160,6 +170,7 @@ if [ "$claude" -eq 1 ]; then
 fi
 
 printf '\n%s added, %s skipped\n' "$added" "$skipped"
+printf 'FROM  %s\n' "$from"
 if [ "$claude" -eq 1 ]; then
   printf 'NEXT  merge the "hooks" block of %s into .claude/settings.json, fill CHECKS in .claude/hooks/check-on-stop.sh, then run .claude/hooks/test-hooks.sh\n' "$from/claude-code-hooks-settings.json"
 fi

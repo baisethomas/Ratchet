@@ -22,10 +22,16 @@ The installer never overwrites. The judgement — what the check command is, whi
 Tell the owner what will be added and what will be skipped, and get a yes. Then:
 
 ```
-<source>/skills/ratchet-init/scripts/install.sh --from <source> --to <repo root> [--claude] [--codex]
+<source>/skills/ratchet-init/scripts/install.sh --from <source> --to <repo root> [--claude [--plugin]] [--codex]
 ```
 
-`--to` must be the repo root. Pass `--claude` and `--codex` only for tools actually used here. Read the `ADD` / `SKIP` / `LINK` lines. A `SKIP ... (exists)` is a file the repo already had: compare it with Ratchet's version and tell the owner what differs. A `SKIP ... (parent is a symlink)` means a directory such as `.claude` or `.ratchet` points somewhere else (shared dotfiles, another checkout); the installer will not write through it, so ask the owner where those files should live. Never replace it yourself — an existing `AGENTS.md` is someone's contract.
+`--to` must be the repo root. Pass `--claude` and `--codex` only for tools actually used here. Add `--plugin` when the Ratchet plugin is enabled in Claude Code (you are running from it if the source in step 1 was the plugin root): the skills and the destructive-command guard already come from the plugin, and installing them again shows every skill twice in `/skills` and runs the guard twice. The installer echoes the resolved source as `FROM`; repeat it to the owner so they can see where the files came from. Read the `ADD` / `SKIP` / `LINK` lines. A `SKIP ... (exists)` is a file the repo already had: compare it with Ratchet's version and tell the owner what differs. The common case is an existing `CLAUDE.md` (any repo that has used Claude Code has one) and sometimes an existing `AGENTS.md`. Offer the owner the same three options every time, recommended first:
+
+1. **Append** — add Ratchet's contract as a section at the end of the existing file, leaving the owner's rules untouched above it. Right for a short existing file that holds repo knowledge (commands, conventions).
+2. **Sidecar** — write Ratchet's version as `AGENTS.ratchet.md` and add one line to the existing file: "Also read `AGENTS.ratchet.md`." Right when the existing file is long or owned by someone else.
+3. **Skip** — leave both as they are and note in the report which Ratchet rules are therefore not in force. Right when the owner wants to read Ratchet's version first.
+
+Never replace the existing file, and never create a competing `AGENTS.md` beside a `CLAUDE.md` that already acts as the contract. A `SKIP ... (parent is a symlink)` means a directory such as `.claude` or `.ratchet` points somewhere else (shared dotfiles, another checkout); the installer will not write through it, so ask the owner where those files should live. Never replace it yourself — an existing `AGENTS.md` is someone's contract.
 
 **Done when:** the installer exited 0 and every `SKIP` has been explained.
 
@@ -33,19 +39,21 @@ Tell the owner what will be added and what will be skipped, and get a yes. Then:
 
 Open each installed file and resolve every `FILL-ME`. Propose values from what step 1 found, show them as a draft, and let the owner edit before writing:
 
-- **Check command** (`AGENTS.md` → Repo specifics): the one command that lints, typechecks, and tests. Run it before proposing it. If the repo has no such command, say so — that gap is the most valuable finding of the install, and creating one is a better first task than any rule.
+- **Check command** (`AGENTS.md` → Repo specifics): the one command that lints, typechecks, and tests. Run it before proposing it — but for compiled and mobile stacks (Xcode, Gradle, Rust) a run is minutes and the first attempt usually fails on setup (a stale simulator name, a missing toolchain). Start it in the background as soon as you have a candidate and continue the survey while it runs; expect to iterate. If the repo has no such command, say so — that gap is the most valuable finding of the install, and creating one is a better first task than any rule.
 - **High-risk and untested modules:** from churn (`git log --format= --name-only | sort | uniq -c | sort -rn | head`), from what writes data or handles money, auth, or concurrency, and from where tests are absent.
 - **Public API / shared contracts, extra hard-stop paths, environment assumptions:** from the code and config, confirmed by the owner.
-- **Delegation tiers:** the modules that must change together, the fragile generated files, the worst realistic loss. In `CODEX.md` or the adapter-less table, the models the owner actually has.
-- **`.ratchet/STATE.md`:** initialise from the branch's real current state with `ratchet-handoff`, not from the template's placeholders.
+- **Delegation tiers:** the modules that must change together, the fragile generated files, the worst realistic loss.
+- **Model slots** in `CODEX.md` or the adapter-less table cannot be filled from evidence — only the owner knows which models their host offers. Ask once, up front, alongside the tool question in step 1; if the owner defers, leave them `FILL-ME` and say so in the report as a decision, not a gap.
+- **`.ratchet/STATE.md`:** write it from the branch's real current state, by hand, following the template's sections — objective, what is done, what is in flight, the check command's actual result, next actions. That is what `ratchet-handoff` would do; you do not need to invoke it mid-install. The stop gate will refuse to finish while any `FILL-ME` remains in it.
 
 Leave a slot as `FILL-ME` rather than guess; list the ones left open.
 
 ## 4. Hooks (Claude Code only)
 
-If the Ratchet plugin is enabled here, the destructive-command guard already runs from the plugin; installing `.claude/hooks/guard-destructive.sh` as well would run it twice. Wire only the stop gate and the lint hook, and say so.
+If you passed `--plugin`, the guard was not installed; wire only the stop gate and the lint hook, and say so.
 
-- Set `CHECKS` in `.claude/hooks/check-on-stop.sh` to the check command from step 3.
+- Set `CHECKS` in `.claude/hooks/check-on-stop.sh` to the check command from step 3. `test-hooks.sh` stages its own copy with the npm defaults, so filling `CHECKS` does not break the suite.
+- The lint hook as shipped runs ESLint and only on `.js`/`.ts` files. **In any other stack it exits 0 on every edit and looks like it is working.** Either adapt the file-extension case and the lint command to this repo's linter (`swiftlint lint --path`, `ruff check`, `gofmt -l`, `cargo clippy`, ...) or tell the owner plainly that the lint hook is a no-op here and leave the PostToolUse entry out of the settings merge. The `test-hooks.sh` lint cases only exercise the parser and project-dir paths, so an adapted hook still passes them.
 - Merge the `hooks` block from `<source>/claude-code-hooks-settings.json` into `.claude/settings.json` — the `Stop` and `PostToolUse` entries, and the `PreToolUse` guard entry **only if the plugin is not enabled here**. If that file already has hooks, add Ratchet's entries beside them; do not replace the block. Drop the `_readme` and `_purpose` keys. Show the diff before writing.
 - Extend the guard's patterns for this stack if the owner wants (`terraform apply`, `kubectl delete`, ...).
 
@@ -56,13 +64,9 @@ If the Ratchet plugin is enabled here, the destructive-command guard already run
 .agents/skills/ratchet-bugfix/scripts/test-rrr.sh
 ```
 
-A hook that silently does nothing looks exactly like a hook that works. Then pipe one blocked command through the guard and confirm exit 2:
+A hook that silently does nothing looks exactly like a hook that works. `test-hooks.sh` pipes real payloads through the guard and asserts the blocks, so it is the proof that the guard bites. Do not type a payload containing a destructive command into a Bash call yourself: the guard matches command text, so it will block the `printf` that carries it. If you want one manual probe, write the payload to a file with the Write tool and run `.claude/hooks/guard-destructive.sh < payload.json; echo "exit $?"` — expect 2.
 
-```
-printf '{"tool_name":"Bash","tool_input":{"command":"git push --force"}}' | .claude/hooks/guard-destructive.sh; echo "exit $?"
-```
-
-**Done when:** both suites pass in the target repo and the guard returned exit 2.
+**Done when:** both suites pass in the target repo.
 
 ## 6. Report
 
