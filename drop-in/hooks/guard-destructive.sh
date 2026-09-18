@@ -106,8 +106,9 @@ has_i() { grep -qiE "$1" <<<"$norm"; }
 # Segment boundaries are found on the ORIGINAL text, before quotes are stripped:
 # `git push "topic&note" --force` is one command, and splitting the stripped text
 # on `&` would put the flag in a different segment and let the push through. Only
-# a `;`, `&`, `|` or newline that is outside quotes and not backslash-escaped is a
-# boundary. If the quoting never closes, nothing is split: the whole line is one
+# a `;`, `&`, `|` or newline that is outside quotes, outside parentheses, and not
+# backslash-escaped is a boundary (`git push >(a;b) --force` is one command). If
+# quotes or parentheses never close, nothing is split: the whole line is one
 # segment, which can only over-block, never under-block.
 SEP=$'\x1f'
 # awk rather than a bash character loop, which is quadratic on long commands.
@@ -120,7 +121,7 @@ SEP=$'\x1f'
 case "$command" in
   *"$SEP"*) segmented=${command//$SEP/ } ;;
   *) segmented=$(printf '%s' "$command" | awk -v SEP="$SEP" '
-  BEGIN { RS = "\001"; q = ""; esc = 0; out = "" }
+  BEGIN { RS = "\001"; q = ""; esc = 0; depth = 0; out = "" }
   {
     text = $0
     gsub(/\\\n/, "", text)                    # line continuations join their tokens
@@ -134,13 +135,17 @@ case "$command" in
       if (c == "\\") { if (q != "\047") esc = 1; continue }
       if (c == "\047") { if (q != "\"") q = (q == "" ? "\047" : ""); continue }
       if (c == "\"") { if (q != "\047") q = (q == "" ? "\"" : ""); continue }
-      if ((c == ";" || c == "&" || c == "|" || c == "\n") && q == "") {
+      # Parentheses group: $( ), <( ), >( ), and ( ) subshells are one word or
+      # one unit, so an operator inside them is not a boundary either.
+      if (c == "(" && q == "") { depth++; continue }
+      if (c == ")" && q == "") { if (depth > 0) depth--; else depth = -1000; continue }
+      if ((c == ";" || c == "&" || c == "|" || c == "\n") && q == "" && depth == 0) {
         out = out substr(text, start, i - start) SEP; start = i + 1
       }
     }
     out = out substr(text, start)
   }
-  END { if (q != "") gsub(SEP, " ", out); printf "%s", out }' 2>/dev/null) || segmented=$command
+  END { if (q != "" || depth != 0) gsub(SEP, " ", out); printf "%s", out }   # unbalanced: no split' 2>/dev/null) || segmented=$command
      [ -z "$segmented" ] && [ -n "$command" ] && segmented=$command ;;
 esac
 # Then the same normalization the whole-line checks use, per segment.
