@@ -484,6 +484,15 @@ lint_run 0 "$lintproj/a.swift" 'swift row runs when swiftlint is present'
 printf '#!/bin/sh\nprintf "%%s\\n" "$@" > "$0.args"\nexit 0\n' > "$fakebin/ruff"; chmod +x "$fakebin/ruff"
 lint_run 0 "$lintproj/a.py" 'linter receives the file path'
 grep -q "a.py" "$fakebin/ruff.args" 2>/dev/null && pass=$((pass + 1)) || { fail=$((fail + 1)); echo "FAIL: the edited file path was not passed to the linter"; }
+# The ESLint row launches through npx, so "npx exists" proves nothing about ESLint.
+printf 'export default 1\n' > "$lintproj/a.ts"
+printf '#!/bin/sh\necho "npm error could not determine executable"\nexit 1\n' > "$fakebin/npx"; chmod +x "$fakebin/npx"
+rm -rf "$lintproj/node_modules"
+out=$(printf '{"tool_input":{"file_path":"%s"}}' "$lintproj/a.ts" | PATH="$fakebin:$PATH" CLAUDE_PROJECT_DIR="$lintproj" ./lint-edited-file.sh 2>&1); code=$?
+[ "$code" -eq 2 ] && printf '%s' "$out" | grep -q "eslint" && printf '%s' "$out" | grep -q "NOT linted" && pass=$((pass + 1)) || { fail=$((fail + 1)); echo "FAIL: npx present but no ESLint should be reported as a missing linter (exit $code)"; }
+mkdir -p "$lintproj/node_modules/.bin"; printf '#!/bin/sh\nexit 0\n' > "$lintproj/node_modules/.bin/eslint"; chmod +x "$lintproj/node_modules/.bin/eslint"
+printf '#!/bin/sh\nexit 0\n' > "$fakebin/npx"; chmod +x "$fakebin/npx"
+lint_run 0 "$lintproj/a.ts" 'ESLint present in node_modules/.bin -> row runs'
 rm -rf "$fakebin" "$lintproj"
 
 echo "== guard: works on a node-only install (jq genuinely absent) =="

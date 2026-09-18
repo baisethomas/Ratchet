@@ -37,10 +37,10 @@ esac
 lint_command_for() {
   case "$1" in
     *.ts|*.tsx|*.js|*.jsx|*.mjs|*.cjs) echo "npx eslint --no-warn-ignored" ;;
-    *.py)                              echo "ruff check" ;;
+    *.py)                              echo "ruff check --quiet" ;;      # --quiet: no "All checks passed!" on success
     *.swift)                           echo "swiftlint lint --quiet" ;;
     *.go)                              echo "gofmt -l" ;;
-    *.rs)                              echo "rustfmt --check" ;;
+    *.rs)                              echo "cargo fmt --quiet -- --check" ;;   # via cargo so the crate's edition applies
     *.rb)                              echo "rubocop --format simple" ;;
     *.sh|*.bash)                       echo "shellcheck" ;;
     *)                                 echo "" ;;
@@ -51,8 +51,19 @@ lint_cmd=$(lint_command_for "$file")
 # Not a file type this repo lints (docs, config, data): nothing to do.
 [ -z "$lint_cmd" ] && exit 0
 
+# The tool that must exist is the linter, not its launcher: `npx eslint` needs
+# ESLint in node_modules/.bin or on PATH, and "npx exists" proves nothing (npx
+# would try to fetch it, or print an npm error that reads like lint output).
 tool=${lint_cmd%% *}
-if ! command -v "$tool" >/dev/null 2>&1; then
+if [ "$tool" = "npx" ]; then
+  tool=$(printf '%s' "$lint_cmd" | awk '{ print $2 }')
+  installed=0
+  [ -x "${CLAUDE_PROJECT_DIR:-.}/node_modules/.bin/$tool" ] && installed=1
+  command -v "$tool" >/dev/null 2>&1 && installed=1
+else
+  installed=0; command -v "$tool" >/dev/null 2>&1 && installed=1
+fi
+if [ "$installed" -eq 0 ]; then
   echo "lint hook: ${file##*.} files are mapped to '${lint_cmd}' but '${tool}' is not installed, so ${file} was NOT linted. Install it, or remove that row from lint_command_for in .claude/hooks/lint-edited-file.sh." >&2
   exit 2
 fi
