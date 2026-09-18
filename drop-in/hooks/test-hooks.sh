@@ -455,6 +455,37 @@ for payload in '{"tool_input":{"file_path":"README.md"}}' '{}'; do
   [ $? -eq 0 ] && pass=$((pass + 1)) || { fail=$((fail + 1)); echo "FAIL: should exit 0 for $payload"; }
 done
 
+echo "== lint hook: per-stack table — missing tools are reported, present tools are run =="
+fakebin=$(mktemp -d)
+lintproj=$(mktemp -d)
+printf 'x = 1\n' > "$lintproj/a.py"; printf 'echo hi\n' > "$lintproj/a.sh"; printf 'let x = 1\n' > "$lintproj/a.swift"
+lint_run() {  # <expected exit> <file> <label>  (fake tools first on PATH, real PATH behind)
+  local expected="$1" file="$2" label="$3" actual
+  printf '{"tool_input":{"file_path":"%s"}}' "$file" | PATH="$fakebin:$PATH" CLAUDE_PROJECT_DIR="$lintproj" ./lint-edited-file.sh >/dev/null 2>&1
+  actual=$?
+  [ "$actual" -eq "$expected" ] && pass=$((pass + 1)) || { fail=$((fail + 1)); printf 'FAIL: lint hook expected exit %s, got %s for: %s\n' "$expected" "$actual" "$label"; }
+}
+# No ruff anywhere on PATH (guard against a real install): shadow it with a directory that lacks it.
+if ! command -v ruff >/dev/null 2>&1; then
+  lint_run 2 "$lintproj/a.py" 'mapped type, linter not installed -> reported, not skipped'
+  out=$(printf '{"tool_input":{"file_path":"%s"}}' "$lintproj/a.py" | CLAUDE_PROJECT_DIR="$lintproj" ./lint-edited-file.sh 2>&1)
+  printf '%s' "$out" | grep -q "ruff" && printf '%s' "$out" | grep -q "NOT linted" && pass=$((pass + 1)) || { fail=$((fail + 1)); echo "FAIL: missing-linter message should name the tool and say the file was not linted"; }
+else
+  echo "SKIP: ruff is installed here; the missing-linter case needs a machine without it"
+fi
+printf '#!/bin/sh\nexit 0\n' > "$fakebin/ruff"; chmod +x "$fakebin/ruff"
+lint_run 0 "$lintproj/a.py" 'linter present, clean -> silent'
+printf '#!/bin/sh\necho "a.py:1:1 E999 bad"\nexit 1\n' > "$fakebin/ruff"; chmod +x "$fakebin/ruff"
+lint_run 2 "$lintproj/a.py" 'linter reports a problem -> surfaced'
+printf '#!/bin/sh\necho "a.sh"\nexit 0\n' > "$fakebin/shellcheck"; chmod +x "$fakebin/shellcheck"
+lint_run 2 "$lintproj/a.sh" 'linter exits 0 but prints (gofmt -l style) -> surfaced'
+printf '#!/bin/sh\nexit 0\n' > "$fakebin/swiftlint"; chmod +x "$fakebin/swiftlint"
+lint_run 0 "$lintproj/a.swift" 'swift row runs when swiftlint is present'
+printf '#!/bin/sh\nprintf "%%s\\n" "$@" > "$0.args"\nexit 0\n' > "$fakebin/ruff"; chmod +x "$fakebin/ruff"
+lint_run 0 "$lintproj/a.py" 'linter receives the file path'
+grep -q "a.py" "$fakebin/ruff.args" 2>/dev/null && pass=$((pass + 1)) || { fail=$((fail + 1)); echo "FAIL: the edited file path was not passed to the linter"; }
+rm -rf "$fakebin" "$lintproj"
+
 echo "== guard: works on a node-only install (jq genuinely absent) =="
 # The hooks document node as a supported parser, so the suite must prove that
 # configuration rather than assuming jq everywhere.
