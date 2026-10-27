@@ -28,7 +28,14 @@ git log --oneline -10
 git merge-base --is-ancestor <last-known-good-commit> HEAD && echo reachable
 ```
 
-- If the known-good commit is not reachable, the branch was rebased, squashed, or reset since the handoff. The claim "known green at that commit" covers a patch, not a hash: find the same patch with `git show <commit> | git patch-id --stable` against the reflog and the current branch. If the patch is there unchanged, the claim survives; if it changed or cannot be found, the claim is void and "Verification status" is stale.
+- If the known-good commit is not reachable, the branch was rebased, squashed, or reset since the handoff. The claim "known green at that commit" covers a patch, not a hash, so compare patch identities rather than hashes:
+
+  ```
+  old=$(git show <known-good-commit> | git patch-id --stable | cut -d' ' -f1) || echo "commit object gone"
+  git log --format=%H <base>..HEAD | while read -r c; do git show "$c" | git patch-id --stable; done | grep -c "^$old "
+  ```
+
+  A count of 1 means the same patch is on the current branch unchanged and the claim survives. A count of 0 means the patch was changed or dropped. If `git show` on the old commit fails, the object is gone and there is nothing to compare. In both of the last two cases the claim is void and "Verification status" is stale; step 2's own run of the check command is then the only verification there is.
 - Run the check command from `AGENTS.md` → Repo specifics once. This is not redoing the prior work; "Verification status" described a different moment than now.
 - Uncommitted files in `git status` that `STATE.md` does not mention are a finding. Do not stash, revert, or commit them until you know what they are.
 

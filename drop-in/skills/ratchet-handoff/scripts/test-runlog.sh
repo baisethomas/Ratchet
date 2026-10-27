@@ -6,7 +6,9 @@ log="$here/runlog.sh"
 pass=0; fail=0
 ok() { pass=$((pass + 1)); }
 no() { fail=$((fail + 1)); printf 'FAIL: %s\n' "$1"; }
-tmp=$(mktemp -d)
+# Real path on purpose: the script refuses any symlinked component in the path
+# it is given, and on macOS the temp directory sits under a symlink (/var).
+tmp=$(cd "$(mktemp -d)" && pwd -P)
 trap 'rm -rf "$tmp"' EXIT
 
 echo "== header on first use, rows appended, never rewritten =="
@@ -66,6 +68,28 @@ target="$tmp/elsewhere.tsv"; : > "$target"
 ln -s "$target" "$tmp/link.tsv"
 "$log" "$tmp/link.tsv" p d w e r 2>/dev/null; [ $? -eq 2 ] && ok || no "symlink should be refused with exit 2"
 [ ! -s "$target" ] && ok || no "the symlink target was written through"
+
+echo "== a symlinked parent directory is refused, absolute or relative =="
+mkdir "$tmp/real"; ln -s "$tmp/real" "$tmp/linkdir"
+"$log" "$tmp/linkdir/run.tsv" p d w e r 2>/dev/null; [ $? -eq 2 ] && ok || no "absolute path through a symlinked directory should exit 2"
+[ ! -e "$tmp/real/run.tsv" ] && ok || no "the log was written through the symlinked directory"
+mkdir -p "$tmp/rel/real"; ln -s real "$tmp/rel/.ratchet"
+( cd "$tmp/rel" && "$log" .ratchet/run.tsv p d w e r 2>/dev/null ); [ $? -eq 2 ] && ok || no "relative .ratchet symlink should exit 2"
+[ ! -e "$tmp/rel/real/run.tsv" ] && ok || no "the log was written through the .ratchet symlink"
+( cd "$tmp" && "$log" real/run.tsv p d w e r ) && [ -s "$tmp/real/run.tsv" ] && ok || no "a relative path through a real directory should work"
+
+echo "== concurrent first writers produce exactly one header =="
+if command -v flock >/dev/null 2>&1; then
+  c="$tmp/concurrent.tsv"
+  n=40
+  for i in $(seq "$n"); do "$log" "$c" phase "writer $i" why evidence open & done
+  wait
+  [ "$(grep -c '^ts	phase' "$c")" -eq 1 ] && ok || no "expected exactly one header, got $(grep -c '^ts	phase' "$c")"
+  [ "$(wc -l < "$c")" -eq $((n + 1)) ] && ok || no "expected $((n + 1)) lines, got $(wc -l < "$c")"
+  awk -F'\t' 'NF!=6 {bad=1} END {exit bad}' "$c" && ok || no "a concurrent write produced a malformed row"
+else
+  echo "SKIP: flock not installed; concurrent-writer check not run"
+fi
 
 echo "== a missing parent directory is created =="
 "$log" "$tmp/deep/er/run.tsv" p d w e r && [ -s "$tmp/deep/er/run.tsv" ] && ok || no "parent directory was not created"

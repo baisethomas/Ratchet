@@ -41,21 +41,39 @@ fi
 logfile="$1"
 shift
 
-# Refuse to append through a symlink: a log that quietly lands somewhere else
-# is a log that cannot be audited.
+# Refuse to append through a symlink, whether it is the log itself or any
+# directory the caller named on the way to it: a log that quietly lands
+# somewhere else is a log that cannot be audited, and a repository-controlled
+# `.ratchet` symlink would do exactly that. Same policy as ratchet-init's
+# installer. Every component of the path as written is checked, except the
+# root, so on a system where /tmp or /var is itself a symlink pass the real
+# path (`pwd -P`).
 if [ -L "$logfile" ]; then
   printf 'runlog: %s is a symlink; refusing to append through it\n' "$logfile" >&2
   exit 2
 fi
+p="$logfile"
+while p=$(dirname "$p"); [ "$p" != "." ] && [ "$p" != "/" ]; do
+  if [ -L "$p" ]; then
+    printf 'runlog: %s is a symlink; refusing to write the log through it (use the real path)\n' "$p" >&2
+    exit 2
+  fi
+done
 
 logdir=$(dirname "$logfile")
 [ -d "$logdir" ] || mkdir -p "$logdir"
 
-# Header on first use. `>>` rather than `>` on purpose: if the existence test is
-# wrong (a network mount, a race with another writer) the cost is one stray
-# header line, not the rows that were already there.
+# One open in append mode, then every write goes through that descriptor. The
+# header check happens under a lock on the same descriptor so two writers that
+# start on an empty log cannot both see it empty and both write a header. Where
+# flock is missing (macOS ships without it) the append is unlocked and says so;
+# the cost of the race is then one stray header line, never a lost row.
+exec 9>>"$logfile"
+if command -v flock >/dev/null 2>&1; then
+  flock 9 || printf 'runlog: could not lock %s; appending unlocked\n' "$logfile" >&2
+fi
 if [ ! -s "$logfile" ]; then
-  printf 'ts\tphase\tdecision\twhy\tevidence\tresult\n' >> "$logfile"
+  printf 'ts\tphase\tdecision\twhy\tevidence\tresult\n' >&9
 fi
 
 clean() {
@@ -70,4 +88,4 @@ clean() {
 ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
   "$ts" "$(clean "$1")" "$(clean "$2")" "$(clean "$3")" "$(clean "$4")" "$(clean "$5")" \
-  >> "$logfile"
+  >&9
