@@ -96,11 +96,14 @@ done
 
 # Project memory left as a template is not done. A leftover placeholder is a
 # fixed pattern, so it gets a check here rather than a rule the model has to
-# remember. Two placeholders ship in the templates: FILL-ME, and the literal
-# YYYY-MM-DD in STATE.md's "Last handoff" date and a decision's Date line.
-# STATE.md is checked whole. DECISIONS.md keeps both in its "Decision format"
-# example by design, so only the part from "## Decisions" onward is checked.
-placeholder='FILL-ME|YYYY-MM-DD'
+# remember. Two placeholders ship in the templates: FILL-ME, which is a
+# sentinel and matches anywhere, and the literal YYYY-MM-DD, which is also
+# ordinary prose ("the API wants YYYY-MM-DD") and so matches only where the
+# templates put it: STATE.md's "- Updated: YYYY-MM-DD" line and a decision's
+# "- **Date:** YYYY-MM-DD" line. STATE.md is checked whole. DECISIONS.md keeps
+# both placeholders in its "Decision format" example by design, so only the
+# part from "## Decisions" onward is checked.
+placeholder='FILL-ME|^[[:space:]]*- (Updated:|\*\*Date:\*\*) YYYY-MM-DD'
 memory_gaps=""
 if [ -f .ratchet/STATE.md ] && grep -En "$placeholder" .ratchet/STATE.md >/dev/null 2>&1; then
   memory_gaps="${memory_gaps}--- .ratchet/STATE.md still contains a template placeholder (FILL-ME or YYYY-MM-DD) ---"$'\n'"$(grep -En "$placeholder" .ratchet/STATE.md | head -10)"$'\n'

@@ -21,9 +21,11 @@ git branch --show-current
 
 Then run the check command from `AGENTS.md` → Repo specifics, or find the most recent run whose output you actually saw *after* the last edit. "Known green" means a command and a result.
 
-Then make the work durable. If the tree is dirty and this handoff crosses a boundary — a new session, another tool or model, context about to be compacted — commit the work first as one `wip: <what>` commit on the current branch, unless the owner has said not to commit. Never push and never open a PR to pause. If the tree is broken, say so in one line of the commit body. A handoff describing work that exists only in a working tree is fragile.
+Then make the work durable. If this handoff crosses a boundary — a new session, another tool or model, context about to be compacted — commit the files **you changed in this session** as one `wip: <what>` commit on the current branch, unless the owner has said not to commit. Never push and never open a PR to pause. If the tree is broken, say so in one line of the commit body.
 
-**Done when:** you can name the branch, the last known-good commit, and the current result of the check command, and nothing worth keeping exists only in the working tree.
+Only your own work goes in that commit. A file that was already dirty when you started, a generated file you did not mean to touch, or any change you cannot attribute to this session stays in the working tree, uncommitted, and is listed by path under "Open risks / assumptions" so the next agent and the owner can decide what it is. If you cannot tell your changes apart from pre-existing ones, commit nothing and say so. A handoff describing work that exists only in a working tree is fragile, but a `wip:` commit carrying someone else's edits is worse.
+
+**Done when:** you can name the branch, the last known-good commit, and the current result of the check command, and nothing you produced exists only in the working tree.
 
 ## 2. Rewrite STATE.md — replace, never append
 

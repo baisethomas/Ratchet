@@ -79,17 +79,34 @@ mkdir -p "$tmp/rel/real"; ln -s real "$tmp/rel/.ratchet"
 ( cd "$tmp" && "$log" real/run.tsv p d w e r ) && [ -s "$tmp/real/run.tsv" ] && ok || no "a relative path through a real directory should work"
 
 echo "== concurrent first writers produce exactly one header =="
-if command -v flock >/dev/null 2>&1; then
-  c="$tmp/concurrent.tsv"
-  n=40
+concurrent() {   # $1 log path, $2 label; runs 40 writers at once with the current PATH
+  local c="$1" label="$2" n=40 i
   for i in $(seq "$n"); do "$log" "$c" phase "writer $i" why evidence open & done
   wait
-  [ "$(grep -c '^ts	phase' "$c")" -eq 1 ] && ok || no "expected exactly one header, got $(grep -c '^ts	phase' "$c")"
-  [ "$(wc -l < "$c")" -eq $((n + 1)) ] && ok || no "expected $((n + 1)) lines, got $(wc -l < "$c")"
-  awk -F'\t' 'NF!=6 {bad=1} END {exit bad}' "$c" && ok || no "a concurrent write produced a malformed row"
+  [ "$(grep -c '^ts	phase' "$c")" -eq 1 ] && ok || no "$label: expected exactly one header, got $(grep -c '^ts	phase' "$c")"
+  [ "$(wc -l < "$c")" -eq $((n + 1)) ] && ok || no "$label: expected $((n + 1)) lines, got $(wc -l < "$c")"
+  awk -F'\t' 'NF!=6 {bad=1} END {exit bad}' "$c" && ok || no "$label: a concurrent write produced a malformed row"
+}
+if command -v flock >/dev/null 2>&1; then
+  concurrent "$tmp/concurrent-flock.tsv" "with flock"
 else
-  echo "SKIP: flock not installed; concurrent-writer check not run"
+  echo "SKIP: flock not installed; the flock path is not exercised here"
 fi
+# The portable fallback: a shim flock that always fails stands in for a
+# platform without it (macOS), so the mkdir lock is what serializes the writers.
+shim="$tmp/shim"; mkdir "$shim"
+printf '#!/bin/sh\nexit 1\n' > "$shim/flock"; chmod +x "$shim/flock"
+PATH="$shim:$PATH" concurrent "$tmp/concurrent-mkdir.tsv" "mkdir fallback"
+[ ! -d "$tmp/concurrent-mkdir.tsv.lock" ] && ok || no "mkdir fallback left its lock directory behind"
+
+echo "== a stale lock directory delays but does not block the fallback =="
+stale="$tmp/stale.tsv"; mkdir "$stale.lock"
+start=$(date +%s)
+PATH="$shim:$PATH" "$log" "$stale" p d w e r 2>"$tmp/stale.err"; rc=$?
+[ "$rc" -eq 0 ] && [ "$(wc -l < "$stale")" -eq 2 ] && ok || no "stale lock should delay, then append (exit $rc)"
+grep -q 'stale' "$tmp/stale.err" && ok || no "stale lock should be named in the warning"
+[ $(( $(date +%s) - start )) -le 10 ] && ok || no "stale lock wait exceeded the bound"
+rmdir "$stale.lock"
 
 echo "== a missing parent directory is created =="
 "$log" "$tmp/deep/er/run.tsv" p d w e r && [ -s "$tmp/deep/er/run.tsv" ] && ok || no "parent directory was not created"

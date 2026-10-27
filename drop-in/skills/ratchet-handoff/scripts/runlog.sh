@@ -64,13 +64,29 @@ logdir=$(dirname "$logfile")
 [ -d "$logdir" ] || mkdir -p "$logdir"
 
 # One open in append mode, then every write goes through that descriptor. The
-# header check happens under a lock on the same descriptor so two writers that
-# start on an empty log cannot both see it empty and both write a header. Where
-# flock is missing (macOS ships without it) the append is unlocked and says so;
-# the cost of the race is then one stray header line, never a lost row.
+# header check happens under a lock so two writers that start on an empty log
+# cannot both see it empty and both write a header. flock on the descriptor
+# where it exists; where it is missing or fails (macOS ships without it), a
+# directory beside the log is the lock, because mkdir is atomic on every POSIX
+# filesystem. The fallback waits a bounded two seconds for a holder to finish,
+# then appends unlocked and says so, naming the directory to remove if a
+# killed writer left it behind. A lock a writer could wait on forever would
+# turn one dead process into a stuck run.
 exec 9>>"$logfile"
-if command -v flock >/dev/null 2>&1; then
-  flock 9 || printf 'runlog: could not lock %s; appending unlocked\n' "$logfile" >&2
+locked=0
+if command -v flock >/dev/null 2>&1 && flock 9 2>/dev/null; then
+  locked=1
+else
+  lockdir="$logfile.lock"
+  for _ in $(seq 40); do
+    if mkdir "$lockdir" 2>/dev/null; then
+      locked=1
+      trap 'rmdir "$lockdir" 2>/dev/null' EXIT
+      break
+    fi
+    sleep 0.05
+  done
+  [ "$locked" -eq 1 ] || printf 'runlog: could not lock %s within 2s (stale %s?); appending unlocked\n' "$logfile" "$lockdir" >&2
 fi
 if [ ! -s "$logfile" ]; then
   printf 'ts\tphase\tdecision\twhy\tevidence\tresult\n' >&9

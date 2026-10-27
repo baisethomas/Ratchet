@@ -13,7 +13,7 @@ Two failures this prevents. **Redoing the trail:** a "let me verify everything f
 
 - Read `AGENTS.md`, then `.ratchet/STATE.md`, then `.ratchet/DECISIONS.md`. If a run log exists (`.ratchet/run.tsv`, written by `ratchet-handoff`'s `runlog.sh`), read its last rows; a `start` row marks where an earlier run began.
 - The prior session's transcript, if one is reachable, is not the trail. `STATE.md` is. Open a transcript only to resolve a specific gap the state file names, and keep what you learn out of the state file unless a fresh agent would need it.
-- No `STATE.md` → this is not a pickup. Reconstruct from `git log`, `git diff <base>...HEAD`, and open PRs, then write `STATE.md` with `ratchet-handoff` before planning anything.
+- No `STATE.md` → this is not a pickup. Reconstruct from `git log`, `git diff <base>...HEAD`, and open PRs, then write `STATE.md` with `ratchet-handoff` before planning anything. Its commit rule still holds: you have changed nothing yet, so nothing dirty in the tree is yours to commit.
 
 **Done when:** you can say in two sentences what the prior agent was driving toward and where it says it stopped.
 

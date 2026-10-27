@@ -406,6 +406,10 @@ printf '# State\n## Objective\nShip the thing\n## Last handoff\n- Updated: YYYY-
 assert_mem 2 'STATE.md handoff date left as the YYYY-MM-DD placeholder'
 printf '# State\n## Objective\nShip the thing\n## Last handoff\n- Updated: 2026-10-27\n' > "$memdir/.ratchet/STATE.md"
 assert_mem 0 'STATE.md handoff date filled in'
+printf '# State\n## Objective\nShip the thing\n## Important context\n- The upstream API wants dates as YYYY-MM-DD, not epoch\n## Last handoff\n- Updated: 2026-10-27\n' > "$memdir/.ratchet/STATE.md"
+assert_mem 0 'YYYY-MM-DD as ordinary prose in STATE.md is not a placeholder'
+printf '## Decision format\n- **Date:** YYYY-MM-DD\n## Decisions\n### D-1 — use X\n- **Date:** 2026-10-27\n- **Why:** the export format is YYYY-MM-DD and the old code used epoch\n' > "$memdir/.ratchet/DECISIONS.md"
+assert_mem 0 'YYYY-MM-DD as ordinary prose in a recorded decision is not a placeholder'
 printf '## Decision format\n- **Date:** YYYY-MM-DD\n## Decisions\n### D-1 — use X\n- **Date:** 2026-10-27\n' > "$memdir/.ratchet/DECISIONS.md"
 assert_mem 0 'YYYY-MM-DD in the DECISIONS.md format example is the template, not a gap'
 printf '## Decision format\n- **Date:** YYYY-MM-DD\n## Decisions\n### D-1 — use X\n- **Date:** YYYY-MM-DD\n' > "$memdir/.ratchet/DECISIONS.md"
