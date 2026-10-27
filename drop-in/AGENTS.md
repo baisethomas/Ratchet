@@ -24,6 +24,7 @@ Tool-specific files such as CLAUDE.md should point here rather than duplicate th
 - Read the files you'll change AND their call sites before forming a plan. The repo is context the user didn't type.
 - For anything beyond a trivial change, state the plan before editing.
 - Resolve three things first: what behavior changes (intent), what's allowed to change (blast radius), and what proves it's done (passing test, reproduced-then-fixed bug, green build, or other explicit check).
+- Write the definition of done as a checkable predicate before the first edit. It may be found wrong and replaced with the owner's agreement; it is never quietly relaxed to declare victory.
 
 ## Project memory is part of the job
 
@@ -77,6 +78,8 @@ Use this autonomy ladder:
 - After writing a regression test, prove it can fail by reverting or disabling the fix, confirm failure, restore the fix, and confirm pass.
 - Check installed-version APIs rather than relying on memory.
 - If a test fails and the cause is not understood, stop and report. Do not hide, bypass, or reshape the test merely to produce green output.
+- A check that ran but produced no verdict — flaky, interrupted, blocked part-way — is INCONCLUSIVE. Inconclusive is never a pass and never counts toward "done".
+- When two fixes that share one premise have failed the same check, write the premise down and test it directly before a third fix. A guard added because it "might help" is a hypothesis; when evidence refutes it, revert what it motivated.
 
 ## Scope law
 
@@ -99,6 +102,26 @@ Require explicit human approval before:
 
 The guard hooks intentionally enforce some of these categories more conservatively than prose alone. If a guarded action is genuinely approved, the human performs or explicitly bypasses the guard; agents must not invent self-approval mechanisms.
 
+## What enforces these rules
+
+Every rule above is either enforced by something that fires on its own or held by prose alone. This table says which. A **prose only** row is a promotion candidate: when a failure escapes through one, `ratchet-tighten` adds the check in the same change rather than another sentence. Drop a row when its mistake can no longer happen.
+
+| Rule | Enforced by |
+|---|---|
+| Checks run after the last edit, before "done" | `check-on-stop.sh` stop hook (Claude Code); `ratchet-done` step 2 elsewhere |
+| A regression test is seen failing without the fix | `rrr.sh` via `ratchet-bugfix` |
+| Lint and typecheck on every edited file | `lint-edited-file.sh` post-edit hook (Claude Code); the check command elsewhere |
+| Destructive git, migrations, outbound sends need approval | `guard-destructive.sh` (Claude Code); prose only elsewhere |
+| Project memory is current and holds no placeholder | stop hook placeholder check; `ratchet-handoff` |
+| Review findings are reproduced before they are acted on | `ratchet-review` step 4 |
+| Diff contains only the requested change | prose only (`ratchet-done` step 1) |
+| No secrets or transcripts in project memory | prose only (`ratchet-handoff` step 4) |
+| Public API and shared-contract changes need approval | prose only |
+| High-impact decisions wait for approval | prose only |
+<!-- FILL-ME, optional: rows for repo-specific checks (CI jobs, custom lints) -->
+
+An exception to an enforced rule lives on the offending line with a reason, an expiry date, and the approving human's name, never in a global allowlist.
+
 ## Delegation and model tiers
 
 The session that talks to the owner is the **orchestrator**. It cannot switch its own model. This section routes delegated work only when the owner has authorized delegation — it does not itself grant that authority. Delegate only bounded work and own the result: re-run the checks or read the evidence directly; never accept a subagent's "done" on trust. This contract binds every tier equally; a faster model gets a shorter leash, not a looser contract.
@@ -116,7 +139,9 @@ If only one model is available, every tier collapses onto it. The "Owns" column 
 
 - **Route by blast radius, not by apparent size.** A one-line change in a high-risk module is high-risk work; a fifty-line new settings screen is routine.
 - **Escalate on the second failure.** If a routine or git-and-docs task fails verification twice, or turns out to touch a hard stop, return it to the orchestrator or the next tier up with the failure attached. Never retry a weaker model into the same wall.
-- **Reviews go up a tier.** A hostile diff review (`review-prompts.md` §5) uses a model at least as strong as the one that wrote the diff, in a fresh context.
+- **Reviews go up a tier.** A hostile diff review (`review-prompts.md` §5) uses a model at least as strong as the one that wrote the diff, in a fresh context. Where the tool allows it, a different model family as reviewer is better still: a finding two families raise independently is the strongest signal.
+- **The author's run is not the verdict for high-risk work.** An author checks what it meant to build. For work in the high-risk tier, "done" needs a verdict from a context that did not write the code (`ratchet-review`), on the exact commit being accepted. Green CI and an approving bot are inputs to that verdict, not the verdict.
+- **Every delegation is a brief with fixed fields:** goal in one sentence, scope (paths it may and may not write), context pointers, acceptance (the predicate), the verify command, forbidden actions (the hard stops that apply), and the report shape. A field you cannot fill means the unit is not scoped yet; do not delegate it.
 - **Verification is tier-independent.** The check command, the guards, the hard stops, and the self-test apply to every model equally.
 - **When unsure, go up.** Use the high-risk operator tier. The cost of a wrong cheap answer in this repo is <!-- FILL-ME: the worst realistic loss, e.g. lost user data -->, not a wasted token.
 
@@ -135,9 +160,11 @@ Every nontrivial completion summary should contain, in order:
 
 1. **What changed** — the behavior, first.
 2. **Shape & why** — files touched, approach chosen, and why if alternatives were live.
-3. **Verification** — what was actually run/read/assumed. Never collapse these categories.
+3. **Verification** — what was actually run / read / assumed, and what ran but was inconclusive. Never collapse these categories.
 4. **Residue** — assumptions, untested paths, follow-ups, and deliberately untouched issues.
 5. **Handoff** — confirm `.ratchet/STATE.md` is current for this branch/workstream and call out any new medium-impact decisions recorded or high-impact decisions awaiting approval.
+
+A procedure step that was skipped stays in the report as `skip: <reason>`. A step that silently vanishes is the failure the report exists to catch.
 
 ## Repo specifics
 
@@ -151,7 +178,7 @@ Every nontrivial completion summary should contain, in order:
 
 ## Self-test before every "done"
 
-1. Did I run the available checks, or does the change merely read correct?
+1. Did I run the available checks, or does the change merely read correct? Is any check that ran without a verdict reported as inconclusive rather than as passing?
 2. Does the diff contain only the intended change, and can I justify every hunk?
 3. What did I assume about environment, versions, or project state, and did I state it?
 4. For a bug fix, do I have evidence the regression test can fail without the fix?

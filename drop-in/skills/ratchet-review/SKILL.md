@@ -31,8 +31,9 @@ Give the reviewer only: the diff command, the commit list, the task sentence, an
 > 2. SCOPE — every hunk not strictly required by the task sentence: debug output, reformatting, renames, duplicated helpers, behavior nobody asked for.
 > 3. SWALLOWS — broadened catches, ignored errors and exit codes, suppressed type or lint errors, tests weakened or skipped to pass.
 > 4. MEMORY-BASED API CALLS — any library or CLI call whose signature was not checked against the installed version.
-> 5. TESTS THAT CANNOT FAIL — new tests whose expected value is computed the way the code computes it, or that would pass with the change reverted.
+> 5. TESTS THAT CANNOT FAIL, OR CANNOT SURVIVE — new tests whose expected value is computed the way the code computes it, or that would pass with the change reverted; and tests that would fail when only internals change, which pin the implementation and ossify the next refactor.
 > 6. SIMPLICITY — is there a version of this change with half the diff? Sketch it in three lines.
+> 7. THE ONE FACT — most risky-looking changes are safe because of a single fact ("this only drops cache entries that are already dead"). Name it, then say how far down this ladder you got it: (1) the author said so, (2) a real file:line, (3) you walked the failure path and it does not reach, (4) you ran a script or test that calls the real code and fails loud if the fact is false, (5) you reproduced it in the running app. Below rung 4 the fact is unproven; say so.
 >
 > For each finding: file and line, what breaks, the input or sequence that breaks it, and whether you RAN it or READ it. Findings only, most severe first, under 500 words.
 

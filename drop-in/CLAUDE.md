@@ -19,14 +19,16 @@ Before doing any work, read and follow `AGENTS.md` in full. Its rules govern pla
 
 Tiers, what each owns, and the routing rules are defined in `AGENTS.md` → Delegation and model tiers. This table only says which model fills each tier here. The owner picks the orchestrator's model (`/model`, or the `model` setting). Set a subagent's tier with the Agent tool's `model` parameter, or with `model:` in a `.claude/agents/*.md` definition.
 
-| Tier | Model |
-|---|---|
-| Orchestrate | **Fable** (`fable`) |
-| Operate, high risk | **Opus** (`opus`) |
-| Operate, routine | **Sonnet** (`sonnet`) |
-| Git & docs | **Haiku** (`haiku`) |
+| Tier | Model | Effort |
+|---|---|---|
+| Orchestrate | **Fable** (`fable`) | the owner's setting |
+| Operate, high risk | **Opus** (`opus`) | `high` |
+| Operate, routine | **Sonnet** (`sonnet`) | `medium` |
+| Git & docs | **Haiku** (`haiku`) | `low` |
 
 The value in backticks is the alias that `/model`, the `model` setting, and the Agent tool accept. Fable is not available on every plan or Claude Code version: where `fable` is not selectable, Opus orchestrates and takes the high-risk tier as well — state the substitution, as `AGENTS.md` requires.
+
+Effort is the Agent tool's `effort` parameter and is a floor for the tier: raise it for a hard unit, never lower it on high-risk work to save tokens. A second failed verification escalates the tier, as `AGENTS.md` says, not the effort.
 
 ## Repo-specific Claude notes
 

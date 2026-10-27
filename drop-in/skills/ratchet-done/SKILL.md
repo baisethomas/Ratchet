@@ -1,6 +1,6 @@
 ---
 name: ratchet-done
-description: Completion gate for coding work. Use before telling the user that nontrivial work is done, fixed, ready for review, or passing — even when the change feels obviously fine. Audits the real diff, re-runs the checks, bins claims as RAN / READ / ASSUMED, and writes the completion report.
+description: Completion gate for coding work. Use before telling the user that nontrivial work is done, fixed, ready for review, or passing — even when the change feels obviously fine. Audits the real diff, re-runs the checks, bins claims as RAN / READ / ASSUMED / INCONCLUSIVE, and writes the completion report.
 ---
 
 # Ratchet done — the completion gate
@@ -28,6 +28,9 @@ If removing a hunk would break the change, it was justified; say why in the repo
 - Keep the actual output: the command, the counts, the exit status.
 - If a check fails and you don't understand why, stop and report that. Do not edit a test, broaden a catch, or skip a check to get green.
 - If a check cannot run here (credentials, services, hardware, production data), it goes in ASSUMED with the exact command the owner should run.
+- If a check ran but gave no verdict — it flaked, was interrupted, or blocked part-way — it is INCONCLUSIVE, not ASSUMED and not passing. Before calling a failure a flake: if it is in code the diff never touches, check for a stale base with `git merge-base --is-ancestor <base> HEAD` and report a rebase instead of a retry. A flake earns one fresh run of the whole command, never a retry of one job. An identical second failure is real.
+- Match the evidence to the change. A CLI change runs the real command. A UI change walks the changed flow in the running app. A parser or migration change replays a saved input. A perf change compares before and after measurements. A storage change reads back the written value. A compile or typecheck proves none of these.
+- For work in the high-risk tier (`AGENTS.md` → Delegation), your own run is not the verdict. The RAN bin needs `ratchet-review`'s verdict on this exact commit from a context that did not write the code. Green CI and bot approvals are inputs to it, not substitutes.
 - A stop hook that ran the checks counts only if you saw its output. Outside Claude Code no hook runs — run them yourself.
 
 ## 3. Bin every claim
@@ -37,6 +40,7 @@ Write down each thing you believe is true about this change, then sort it:
 - **RAN** — you executed it in this session and saw the result. Quote the command and the result.
 - **READ** — you inspected code or docs but executed nothing. "The caller handles null" is READ until a test says so.
 - **ASSUMED** — environment, versions, external services, data shape, behavior of code you didn't open, library signatures recalled from memory.
+- **INCONCLUSIVE** — you ran it and it did not decide: a flaky result, a run that died part-way, a check whose output you could not interpret. Quote what you saw. This bin never counts toward done; each entry either becomes RAN by the end of the session or goes to the owner as an open item.
 
 Two checks on the bins:
 
@@ -58,9 +62,11 @@ Exactly these sections, in this order:
 
 1. **What changed** — the behavior difference, first, in one or two sentences. Not a list of files.
 2. **Shape & why** — files touched, the approach, and why this one if alternatives were live.
-3. **Verification** — the three bins from step 3, kept separate. Never collapse them into "tested."
+3. **Verification** — the four bins from step 3, kept separate. Never collapse them into "tested."
 4. **Residue** — untested paths, follow-ups, things you noticed and deliberately left alone, and the one command the owner should run themselves.
 5. **Handoff** — confirm `STATE.md` is current; list medium-impact decisions recorded and high-impact decisions awaiting approval.
+
+Any step of this skill, or of the skill that led here, that you skipped appears in the report as `skip: <reason>`. A step that vanishes is the failure this gate exists to catch.
 
 ## 6. Self-test
 

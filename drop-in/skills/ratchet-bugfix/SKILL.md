@@ -21,11 +21,13 @@ A fix for an unreproduced bug is a guess wearing a diff. A regression test that 
 
 - Find why it fails, not just where. State the cause in one sentence before writing the fix. If you can't, you are about to patch a symptom.
 - Check whether the same cause exists at sibling call sites. Report them; fix them only if they are inside the task's blast radius.
+- **Attack the premise after two misses.** If two fixes that assumed the same thing have both failed the reproduction, stop. Write that shared premise down as one sentence, find an observation that would come out differently if it were false, and make it — before a third fix. Each failed fix is evidence against the belief it assumed, and the cause is usually somewhere the premise did not predict.
 
 ## 3. Fix at the right layer
 
 - Smallest change that removes the cause. No drive-by cleanup in the same diff.
 - If the fix sprawls across many files for one behavior, say so — it usually means the wrong layer.
+- A guard, retry, or fallback added because it "might help" is a hypothesis, not part of the fix. When the reproduction or a later observation refutes it, revert what it motivated. Belt-and-suspenders does not ship.
 - Keep the fix and the test in separate files where the codebase allows; step 4 depends on reverting one without the other.
 
 ## 4. Prove the test can fail
@@ -58,6 +60,7 @@ When the script can't be used (fix and test share a file, a compiled artifact si
 
 - Run the repo's full check command from `AGENTS.md` → Repo specifics. A fix that breaks a neighbor is not a fix.
 - If anything fails and you don't understand why, stop and report. Do not edit another test to get green.
+- If you commit during the task, commit the failing test first and the fix on top. History then replays the proof: anyone can check out the test commit and watch it fail.
 - Finish with `ratchet-done`. In its verification section include: the original failing reproduction, the `rrr.sh` verdict line, and the full-suite result.
 
 <sub>Two test-quality points in step 1 — independent expected values, and a too-shallow seam being a finding — are adapted from the `tdd` and `diagnosing-bugs` skills in [mattpocock/skills](https://github.com/mattpocock/skills) (MIT). See `../CREDITS.md`.</sub>

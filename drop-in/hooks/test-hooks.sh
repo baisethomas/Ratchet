@@ -402,6 +402,15 @@ printf '# State\n## Objective\nFILL-ME\n' > "$memdir/.ratchet/STATE.md"
 assert_mem 2 'STATE.md still has FILL-ME'
 printf '# State\n## Objective\nShip the thing\n' > "$memdir/.ratchet/STATE.md"
 assert_mem 0 'STATE.md filled in'
+printf '# State\n## Objective\nShip the thing\n## Last handoff\n- Updated: YYYY-MM-DD\n' > "$memdir/.ratchet/STATE.md"
+assert_mem 2 'STATE.md handoff date left as the YYYY-MM-DD placeholder'
+printf '# State\n## Objective\nShip the thing\n## Last handoff\n- Updated: 2026-10-27\n' > "$memdir/.ratchet/STATE.md"
+assert_mem 0 'STATE.md handoff date filled in'
+printf '## Decision format\n- **Date:** YYYY-MM-DD\n## Decisions\n### D-1 — use X\n- **Date:** 2026-10-27\n' > "$memdir/.ratchet/DECISIONS.md"
+assert_mem 0 'YYYY-MM-DD in the DECISIONS.md format example is the template, not a gap'
+printf '## Decision format\n- **Date:** YYYY-MM-DD\n## Decisions\n### D-1 — use X\n- **Date:** YYYY-MM-DD\n' > "$memdir/.ratchet/DECISIONS.md"
+assert_mem 2 'YYYY-MM-DD inside a recorded decision'
+rm -f "$memdir/.ratchet/DECISIONS.md"
 printf '## Decision format\n### D-YYYYMMDD — FILL-ME: title\n- **Decision:** FILL-ME\n## Decisions\n' > "$memdir/.ratchet/DECISIONS.md"
 assert_mem 0 'FILL-ME in the DECISIONS.md format example is the template, not a gap'
 printf '## Decision format\n- **Decision:** FILL-ME\n## Decisions\n### D-1 — use X\n- **Why:** FILL-ME\n' > "$memdir/.ratchet/DECISIONS.md"
