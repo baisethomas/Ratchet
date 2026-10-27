@@ -99,14 +99,30 @@ printf '#!/bin/sh\nexit 1\n' > "$shim/flock"; chmod +x "$shim/flock"
 PATH="$shim:$PATH" concurrent "$tmp/concurrent-mkdir.tsv" "mkdir fallback"
 [ ! -d "$tmp/concurrent-mkdir.tsv.lock" ] && ok || no "mkdir fallback left its lock directory behind"
 
-echo "== a stale lock directory delays but does not block the fallback =="
-stale="$tmp/stale.tsv"; mkdir "$stale.lock"
+echo "== a lock whose holder is dead is taken over; a held or unknown lock refuses the write =="
+sh -c 'exit 0' & deadpid=$!; wait "$deadpid"   # a pid that is certainly not running
+stale="$tmp/stale.tsv"; mkdir "$stale.lock"; printf '%s\n' "$deadpid" > "$stale.lock/pid"
 start=$(date +%s)
-PATH="$shim:$PATH" "$log" "$stale" p d w e r 2>"$tmp/stale.err"; rc=$?
-[ "$rc" -eq 0 ] && [ "$(wc -l < "$stale")" -eq 2 ] && ok || no "stale lock should delay, then append (exit $rc)"
-grep -q 'stale' "$tmp/stale.err" && ok || no "stale lock should be named in the warning"
+PATH="$shim:$PATH" "$log" "$stale" p d w e r 2>/dev/null; rc=$?
+[ "$rc" -eq 0 ] && [ "$(wc -l < "$stale")" -eq 2 ] && ok || no "dead-holder lock should be taken over and the row written (exit $rc)"
+[ ! -d "$stale.lock" ] && ok || no "taken-over lock was not released"
 [ $(( $(date +%s) - start )) -le 10 ] && ok || no "stale lock wait exceeded the bound"
-rmdir "$stale.lock"
+held="$tmp/held.tsv"; mkdir "$held.lock"; printf '%s\n' "$$" > "$held.lock/pid"   # this test shell is alive
+PATH="$shim:$PATH" "$log" "$held" p d w e r 2>"$tmp/held.err"; rc=$?
+[ "$rc" -eq 2 ] && ok || no "a lock held by a live pid should refuse with exit 2 (got $rc)"
+[ ! -s "$held" ] && ok || no "a refused write still appended a row"
+grep -q "$held.lock" "$tmp/held.err" && ok || no "the refusal should name the lock directory"
+[ -d "$held.lock" ] && ok || no "a live holder's lock was removed"
+rm -rf "$held.lock"
+unknown="$tmp/unknown.tsv"; mkdir "$unknown.lock"   # no pid file: holder unknown
+PATH="$shim:$PATH" "$log" "$unknown" p d w e r 2>/dev/null; rc=$?
+[ "$rc" -eq 2 ] && [ ! -s "$unknown" ] && ok || no "a lock with no pid should refuse with exit 2 and write nothing (got $rc)"
+rm -rf "$unknown.lock"
+
+echo "== concurrent writers behind a stale lock still produce exactly one header =="
+cs="$tmp/concurrent-stale.tsv"; mkdir "$cs.lock"; printf '%s\n' "$deadpid" > "$cs.lock/pid"
+PATH="$shim:$PATH" concurrent "$cs" "stale lock then 40 writers"
+[ ! -d "$cs.lock" ] && ok || no "lock directory left behind after the stale-lock takeover"
 
 echo "== a missing parent directory is created =="
 "$log" "$tmp/deep/er/run.tsv" p d w e r && [ -s "$tmp/deep/er/run.tsv" ] && ok || no "parent directory was not created"

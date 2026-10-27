@@ -68,25 +68,49 @@ logdir=$(dirname "$logfile")
 # cannot both see it empty and both write a header. flock on the descriptor
 # where it exists; where it is missing or fails (macOS ships without it), a
 # directory beside the log is the lock, because mkdir is atomic on every POSIX
-# filesystem. The fallback waits a bounded two seconds for a holder to finish,
-# then appends unlocked and says so, naming the directory to remove if a
-# killed writer left it behind. A lock a writer could wait on forever would
-# turn one dead process into a stuck run.
+# filesystem, and the holder's pid sits inside it. The fallback waits a bounded
+# two seconds. A lock whose recorded holder is no longer running is stale and
+# is taken over once. A lock that is still held, or whose holder is unknown,
+# refuses the write with exit 2 and names the directory: a row that may have
+# interleaved with another writer is worse than a row the caller is told was
+# not written. The script never appends unlocked.
 exec 9>>"$logfile"
+lockdir="$logfile.lock"
+acquire() {
+  mkdir "$lockdir" 2>/dev/null || return 1
+  trap 'rm -rf "$lockdir"' EXIT
+  printf '%s\n' "$$" > "$lockdir/pid"
+}
 locked=0
 if command -v flock >/dev/null 2>&1 && flock 9 2>/dev/null; then
   locked=1
 else
-  lockdir="$logfile.lock"
   for _ in $(seq 40); do
-    if mkdir "$lockdir" 2>/dev/null; then
-      locked=1
-      trap 'rmdir "$lockdir" 2>/dev/null' EXIT
-      break
-    fi
+    acquire && { locked=1; break; }
     sleep 0.05
   done
-  [ "$locked" -eq 1 ] || printf 'runlog: could not lock %s within 2s (stale %s?); appending unlocked\n' "$logfile" "$lockdir" >&2
+  if [ "$locked" -eq 0 ]; then
+    holder=$(cat "$lockdir/pid" 2>/dev/null || true)
+    # A pid that is not running left this lock behind. An empty pid means a
+    # holder that is still setting up, or one killed in that instant; the
+    # script cannot tell, so it leaves that lock for a human. The takeover
+    # itself is serialized through a second directory, and the pid is read
+    # again under it, so several waiters that all saw the same dead holder
+    # remove the stale lock once and never remove a lock a new live holder
+    # created in the meantime.
+    if [ -n "$holder" ] && ! kill -0 "$holder" 2>/dev/null && mkdir "$lockdir.takeover" 2>/dev/null; then
+      [ "$(cat "$lockdir/pid" 2>/dev/null || true)" = "$holder" ] && rm -rf "$lockdir"
+      rmdir "$lockdir.takeover" 2>/dev/null || true
+    fi
+    for _ in $(seq 40); do
+      acquire && { locked=1; break; }
+      sleep 0.05
+    done
+  fi
+  if [ "$locked" -eq 0 ]; then
+    printf 'runlog: %s is locked by %s (pid %s) and nothing was written. Remove that directory only once you know the writer is gone.\n' "$logfile" "$lockdir" "${holder:-unknown}" >&2
+    exit 2
+  fi
 fi
 if [ ! -s "$logfile" ]; then
   printf 'ts\tphase\tdecision\twhy\tevidence\tresult\n' >&9
