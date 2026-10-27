@@ -38,6 +38,23 @@ row=$(sed -n 5p "$f")
 [ "$(printf '%s' "$row" | cut -f6)" = "'@cmd" ] && ok || no "@ cell not prefixed"
 [ "$(printf '%s' "$row" | cut -f2)" = "phase" ] && ok || no "a plain cell was altered"
 
+echo "== a formula wrapped in double quotes still cannot reach the sheet =="
+# A TSV importer strips enclosing quotes before it looks at the cell, so a raw
+# "=1+1" would decode to =1+1 and run. Check the decoded value, not the bytes.
+"$log" "$f" phase '"=1+1"' '"+1"' 'plain "quoted" middle' open
+row=$(sed -n 6p "$f")
+[ "$(printf '%s' "$row" | cut -f3)" = "'\"=1+1\"" ] && ok || no "leading double quote not prefixed"
+[ "$(printf '%s' "$row" | cut -f5)" = 'plain "quoted" middle' ] && ok || no "a quote in the middle of a cell was altered"
+if command -v python3 >/dev/null 2>&1; then
+  decoded=$(python3 -I -c 'import csv,sys
+rows=list(csv.reader(open(sys.argv[1], newline=""), dialect="excel-tab"))
+print(rows[5][2]); print(rows[5][3])' "$f")
+  printf '%s\n' "$decoded" | grep -q '^=' && no "excel-tab decode exposed a cell starting with =" || ok
+  printf '%s\n' "$decoded" | grep -q '^+' && no "excel-tab decode exposed a cell starting with +" || ok
+else
+  echo "SKIP: python3 not installed; decoded-cell check not run"
+fi
+
 echo "== wrong argument count exits 2 and writes nothing =="
 before=$(wc -l < "$f")
 "$log" "$f" only two 2>/dev/null; [ $? -eq 2 ] && ok || no "too few arguments should exit 2"
