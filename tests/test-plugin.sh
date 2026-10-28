@@ -32,6 +32,14 @@ for d in drop-in/skills/*/; do
 done
 [ "$n" -ge 6 ] && ok || no "expected at least 6 skills, found $n"
 
+echo "== every versioned drop-in carries the plugin's version =="
+pver="$(field drop-in/.claude-plugin/plugin.json version)"
+for f in drop-in/AGENTS.md drop-in/CLAUDE.md drop-in/CODEX.md drop-in/hooks/check-on-stop.sh drop-in/hooks/guard-destructive.sh \
+         drop-in/hooks/lint-edited-file.sh drop-in/hooks/lib-payload.sh drop-in/skills/ratchet-upgrade/scripts/upgrade.sh; do
+  m="$(sed -n 's/.*ratchet-version: *\([0-9][0-9.]*\).*/\1/p' "$f" | head -n 1)"
+  [ "$m" = "$pver" ] && ok || no "$f carries ratchet-version '$m'; plugin.json says $pver"
+done
+
 echo "== the hooks file references scripts that exist, and the guard blocks through it =="
 hooks_rel="$(field drop-in/.claude-plugin/plugin.json hooks)"
 [ -f "drop-in/$hooks_rel" ] && ok || no "plugin.json hooks path '$hooks_rel' does not exist under drop-in/"

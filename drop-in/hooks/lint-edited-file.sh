@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# ratchet-version: 1.2.0
 # PostToolUse(Edit|Write) hook: lint the file that was just edited so the error
 # lands in-loop, whether or not the model would have checked on its own. One
 # linter per file type (see lint_command_for); a mapped type whose linter is

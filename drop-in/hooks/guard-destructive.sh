@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# ratchet-version: 1.2.0
 # PreToolUse(Bash) guard: surface the hard stops in AGENTS.md so irreversible
 # commands stop and go to a human instead of running by momentum.
 #
