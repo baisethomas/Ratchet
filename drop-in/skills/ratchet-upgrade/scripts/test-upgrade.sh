@@ -30,7 +30,7 @@ snapshot() {
 }
 new_repo() { repo="$sandbox/repo.$((pass + fail))"; mkdir -p "$repo" && git -C "$repo" init -q . ; }
 status_of() { printf '%s\n' "$1" | awk -v p="$2" '$2 == p { print $1; exit }'; }
-stage_of() { printf '%s\n' "$1" | sed -n 's/^STAGE //p'; }
+stage_of() { printf '%s\n' "$1" | sed -n 's/^STAGE \([^ ]*\).*/\1/p'; }
 # replace <file> <sed expression> — in-place edit without GNU-only flags
 replace() { local t; t="$(mktemp)"; sed "$2" "$1" > "$t" && cat "$t" > "$1"; rm -f "$t"; }
 
@@ -93,6 +93,10 @@ grep -q 'CHECKS=("make verify")' "$repo/.claude/hooks/check-on-stop.sh" && [ -x 
 [ "$(cksum < "$repo/.ratchet/STATE.md")" = "$state_before" ] && ok || no "STATE.md changed during apply"
 [ ! -f "$repo/.agents/skills/ratchet-pickup/SKILL.md" ] || grep -q 'ratchet-version' "$repo/CLAUDE.md" && no "CLAUDE.md was written although it was not in the apply list" || ok
 [ -z "$(find "$repo" -name '.ratchet-upgrade.*' -print)" ] && ok || no "a temp file was left beside a destination"
+[ -d "$stage" ] && ok || no "report mode's staging directory should outlive the run so proposals can be read"
+apply_stage="$(stage_of "$out")"
+[ -n "$apply_stage" ] && [ ! -d "$apply_stage" ] && ok || no "apply mode should remove its staging directory on exit (left: $apply_stage)"
+printf '%s' "$out" | grep -q '^STAGE .* (removed on exit)' && ok || no "apply mode should say its stage is removed"
 
 echo "== the installed hook still passes its own suite after the upgrade =="
 (cd "$repo" && .claude/hooks/test-hooks.sh >/dev/null 2>&1); hooks_rc=$?
@@ -126,6 +130,7 @@ before="$(cksum < "$repo/AGENTS.md")"
 out="$("$upgrade" --from "$dropin" --to "$repo" --base "$old" --apply AGENTS.md 2>&1)"; code=$?
 [ "$code" -eq 1 ] && printf '%s' "$out" | grep -q '^REFUSE    AGENTS.md (CONFLICT)' && ok || no "applying a conflict should be refused with exit 1 (got $code)"
 [ "$(cksum < "$repo/AGENTS.md")" = "$before" ] && ok || no "a refused apply still wrote the file"
+[ ! -d "$(stage_of "$out")" ] && ok || no "a refused apply should still remove its staging directory"
 
 echo "== no base means no merge: diff only, apply refused =="
 new_repo; install_old_and_fill

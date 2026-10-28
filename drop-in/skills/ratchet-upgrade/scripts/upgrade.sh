@@ -92,6 +92,11 @@ fi
 # mid-release merges against a slightly wrong base and shows that as conflicts rather
 # than guessing; --base pins the exact one when known.
 stage="$(mktemp -d "${TMPDIR:-/tmp}/ratchet-upgrade.XXXXXX")" || die "could not create a staging directory"
+# The staging directory outlives the script only in report mode, where it is the
+# product: the proposals a human reads before saying yes. In apply mode, and on any
+# error or interruption, it goes with the process.
+keep_stage=0
+trap '[ "$keep_stage" -eq 1 ] || rm -rf "$stage"' EXIT
 base_note=""
 if [ -z "$base" ] && [ -n "$installed_version" ]; then
   if src_top="$(git -C "$from" rev-parse --show-toplevel 2>/dev/null)"; then
@@ -128,7 +133,11 @@ fi
 printf 'FROM  %s (ratchet-version %s)\n' "$from" "$new_version"
 printf 'TO    %s (ratchet-version %s)\n' "$to" "${installed_version:-unknown}"
 printf 'INFO  %s\n' "$base_note"
-printf 'STAGE %s\n' "$stage"
+if [ "$apply_all" -eq 1 ] || [ "${#apply[@]}" -gt 0 ]; then
+  printf 'STAGE %s (removed on exit)\n' "$stage"
+else
+  printf 'STAGE %s (kept for inspection; remove it when done)\n' "$stage"
+fi
 
 # linked_parent <destination relative to $to> — any directory on the way is a symlink.
 linked_parent() {
@@ -232,5 +241,7 @@ done
 if [ "$apply_all" -eq 1 ] || [ "${#apply[@]}" -gt 0 ]; then
   printf '\n%s applied, %s refused\n' "$applied" "$refused"
   [ "$refused" -eq 0 ] || exit 1
+  exit 0
 fi
+keep_stage=1
 exit 0
