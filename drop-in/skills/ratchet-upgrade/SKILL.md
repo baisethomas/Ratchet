@@ -46,7 +46,7 @@ Then read each status line. `SAME`, `MEMORY`, `ABSENT`, and `SKIP` need nothing.
 <source>/skills/ratchet-upgrade/scripts/upgrade.sh --from <source> --to <repo root> [--installed-version X.Y.Z] --apply <path> [--apply <path> ...]
 ```
 
-The script recomputes each merge and writes only `MERGE` and `NEW` results; it refuses anything else with exit 1. Hand-resolved conflicts are written by you, as ordinary edits, after the owner has seen them. A second run must report `SAME` for everything applied.
+The script recomputes each merge and writes only `MERGE` and `NEW` results. A path named with `--apply` in any other state is refused with exit 1. `--apply-all` takes every `MERGE` and `NEW`, passes over files with nothing to apply, and reports each `CONFLICT` and `NOBASE` as `LEFT` with exit 1, since the repo is not on the new release until those are merged by hand. Hand-resolved conflicts are written by you, as ordinary edits, after the owner has seen them. A second run must report `SAME` or `CURRENT` for everything applied.
 
 **Done when:** the paths the owner approved are upgraded, a re-run shows them `SAME`, and `git status` shows only those files changed.
 

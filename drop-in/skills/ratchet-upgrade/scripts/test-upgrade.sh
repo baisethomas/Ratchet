@@ -131,6 +131,12 @@ out="$("$upgrade" --from "$dropin" --to "$repo" --base "$old" --apply AGENTS.md 
 [ "$code" -eq 1 ] && printf '%s' "$out" | grep -q '^REFUSE    AGENTS.md (CONFLICT)' && ok || no "applying a conflict should be refused with exit 1 (got $code)"
 [ "$(cksum < "$repo/AGENTS.md")" = "$before" ] && ok || no "a refused apply still wrote the file"
 [ ! -d "$(stage_of "$out")" ] && ok || no "a refused apply should still remove its staging directory"
+out="$("$upgrade" --from "$dropin" --to "$repo" --base "$old" --apply-all 2>&1)"; code=$?
+[ "$code" -eq 1 ] && ok || no "apply-all with a conflict present should exit 1 (got $code)"
+printf '%s' "$out" | grep -q '^LEFT      AGENTS.md (CONFLICT' && ok || no "apply-all should report the conflicted file as LEFT"
+[ "$(cksum < "$repo/AGENTS.md")" = "$before" ] && ok || no "apply-all wrote a conflicted file"
+grep -q "ratchet-version: $new_version" "$repo/CLAUDE.md" && ok || no "apply-all should still apply the clean merges beside a conflict"
+printf '%s' "$out" | grep -q 'refused or left$' && ok || no "the summary line should count what was left"
 
 echo "== no base means no merge: diff only, apply refused =="
 new_repo; install_old_and_fill
@@ -139,6 +145,8 @@ out="$("$upgrade" --from "$dropin" --to "$repo" 2>&1)"; code=$?
 printf '%s' "$out" | grep -q '^INFO  base: installed version unknown' && ok || no "the report should say why there is no base"
 before="$(cksum < "$repo/AGENTS.md")"
 "$upgrade" --from "$dropin" --to "$repo" --apply AGENTS.md >/dev/null 2>&1; [ $? -eq 1 ] && [ "$(cksum < "$repo/AGENTS.md")" = "$before" ] && ok || no "NOBASE apply should be refused and write nothing"
+out="$("$upgrade" --from "$dropin" --to "$repo" --apply-all 2>&1)"; code=$?
+[ "$code" -eq 1 ] && printf '%s' "$out" | grep -q '^LEFT      AGENTS.md (NOBASE' && [ "$(cksum < "$repo/AGENTS.md")" = "$before" ] && ok || no "apply-all with NOBASE files should exit 1, report them LEFT, and write nothing to them (got $code)"
 
 echo "== the base is found in the source checkout's history by installed version =="
 src="$sandbox/src"; mkdir -p "$src" && git -C "$src" init -q . && git -C "$src" config user.email t@t && git -C "$src" config user.name t

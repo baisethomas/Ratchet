@@ -20,8 +20,12 @@
 #   SKIP      the destination is a symlink or sits under one; never written through
 # Proposals go to a staging directory named on the STAGE line, mirroring repo paths.
 #
-# Apply mode (--apply <path>..., or --apply-all) writes only MERGE and NEW results, by
-# recomputing them; CONFLICT, NOBASE, MEMORY, SKIP and ABSENT are refused with exit 1.
+# Apply mode writes only MERGE and NEW results, by recomputing them. --apply <path> is a
+# request: a named path in any other state is refused, exit 1. --apply-all takes every
+# MERGE and NEW, passes over SAME, CURRENT, MEMORY, ABSENT and SKIP in silence because
+# there is nothing to apply there, and reports each CONFLICT and NOBASE as LEFT with
+# exit 1, because those files still need a hand merge before the repo is on the new
+# release and a caller reading the exit code must not be told otherwise.
 # The owner's yes, per file, is the skill's job and happens before --apply.
 #
 # The merge is a three-way merge (git merge-file): base = the template as it was in the
@@ -206,19 +210,29 @@ consider() {
       status="CURRENT"; printf 'CURRENT   %s (installed edits are already on this release)\n' "$rel"
     elif [ "$n" -eq 0 ]; then
       status="MERGE"; printf 'MERGE     %s (%s hunks; proposal staged)\n' "$rel" "$(diff -u "$dest" "$proposal" | grep -c '^@@')"
-    elif [ "$n" -ge 255 ]; then
+    elif [ "$n" -ge 128 ]; then
+      # git merge-file exits negative (255 in a shell) on an operational error such as
+      # an unreadable input, measured on git 2.43; conflicts exit low and positive.
       status="NOBASE"; printf 'NOBASE    %s (merge-file failed; diff only)\n' "$rel"
     else
-      status="CONFLICT"; printf 'CONFLICT  %s (%s conflicts; resolve by hand from the staged proposal)\n' "$rel" "$n"
+      # The exit code is not a reliable conflict count across git versions; count the
+      # markers in the proposal instead.
+      status="CONFLICT"; printf 'CONFLICT  %s (%s conflicts; resolve by hand from the staged proposal)\n' "$rel" "$(grep -c '^<<<<<<<' "$proposal")"
     fi
   else
     status="NOBASE"; printf 'NOBASE    %s (%s changed lines; no base to merge against)\n' "$rel" "$(diff "$dest" "$src" | grep -c '^[<>]')"
   fi
 
-  # --apply-all takes what can be applied and passes over the rest in silence; a path
-  # named with --apply is a request, and a request that cannot be met is a refusal.
+  # --apply-all takes what can be applied, passes over what has nothing to apply, and
+  # counts what still needs a hand merge so the exit code says the repo is not yet on
+  # the new release; a path named with --apply is a request, and a request that cannot
+  # be met is a refusal.
   if [ "$apply_all" -eq 1 ]; then
-    case "$status" in MERGE|NEW) ;; *) return 0 ;; esac
+    case "$status" in
+      MERGE|NEW) ;;
+      CONFLICT|NOBASE) printf 'LEFT      %s (%s; needs a hand merge)\n' "$rel" "$status"; refused=$((refused + 1)); return 0 ;;
+      *) return 0 ;;
+    esac
   else
     wants "$rel" || return 0
   fi
@@ -248,7 +262,7 @@ LIST
 done
 
 if [ "$apply_all" -eq 1 ] || [ "${#apply[@]}" -gt 0 ]; then
-  printf '\n%s applied, %s refused\n' "$applied" "$refused"
+  printf '\n%s applied, %s refused or left\n' "$applied" "$refused"
   [ "$refused" -eq 0 ] || exit 1
   exit 0
 fi
