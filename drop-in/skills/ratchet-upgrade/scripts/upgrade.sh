@@ -163,13 +163,22 @@ requested=0
 # write_file <source> <destination relative to $to> — the one place anything is written.
 # A temp file beside the destination, then one rename: a reader never sees a half-written
 # file, and rename does not follow a symlink that appeared at the destination meanwhile.
+# The symlink check runs again here, right before the temp file is made and again right
+# before the rename, not only at classification time, so the window in which a parent
+# directory could be swapped for a symlink is the instant of the call, not the whole
+# report. A shell script cannot close that instant: there is no O_NOFOLLOW for path
+# components in cp or mv. The remaining exposure is a process that can already write
+# the working tree, which could edit these files directly; it is the same exposure
+# install.sh and git checkout have, and it is stated here rather than papered over.
 write_file() {
   local src="$1" rel="$2" dest="$to/$2" tmp
-  mkdir -p "$(dirname "$dest")" || { printf 'REFUSE %s (cannot create its directory)\n' "$rel"; refused=$((refused + 1)); return 1; }
-  tmp="$(mktemp "$(dirname "$dest")/.ratchet-upgrade.XXXXXX")" || { printf 'REFUSE %s (cannot stage a write)\n' "$rel"; refused=$((refused + 1)); return 1; }
-  cp "$src" "$tmp" || { rm -f "$tmp"; printf 'REFUSE %s (copy failed)\n' "$rel"; refused=$((refused + 1)); return 1; }
+  if [ -L "$dest" ] || linked_parent "$rel"; then printf 'REFUSE    %s (became a symlink)\n' "$rel"; refused=$((refused + 1)); return 1; fi
+  mkdir -p "$(dirname "$dest")" || { printf 'REFUSE    %s (cannot create its directory)\n' "$rel"; refused=$((refused + 1)); return 1; }
+  tmp="$(mktemp "$(dirname "$dest")/.ratchet-upgrade.XXXXXX")" || { printf 'REFUSE    %s (cannot stage a write)\n' "$rel"; refused=$((refused + 1)); return 1; }
+  cp "$src" "$tmp" || { rm -f "$tmp"; printf 'REFUSE    %s (copy failed)\n' "$rel"; refused=$((refused + 1)); return 1; }
   if [ -e "$dest" ]; then [ -x "$dest" ] && chmod +x "$tmp"; else [ -x "$src" ] && chmod +x "$tmp"; fi
-  mv -f "$tmp" "$dest" || { rm -f "$tmp"; printf 'REFUSE %s (move failed)\n' "$rel"; refused=$((refused + 1)); return 1; }
+  if [ -L "$dest" ] || linked_parent "$rel"; then rm -f "$tmp"; printf 'REFUSE    %s (became a symlink)\n' "$rel"; refused=$((refused + 1)); return 1; fi
+  mv -f "$tmp" "$dest" || { rm -f "$tmp"; printf 'REFUSE    %s (move failed)\n' "$rel"; refused=$((refused + 1)); return 1; }
   return 0
 }
 
