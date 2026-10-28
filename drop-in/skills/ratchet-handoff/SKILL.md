@@ -21,7 +21,9 @@ git branch --show-current
 
 Then run the check command from `AGENTS.md` → Repo specifics, or find the most recent run whose output you actually saw *after* the last edit. "Known green" means a command and a result.
 
-**Done when:** you can name the branch, the last known-good commit, and the current result of the check command.
+Note which files are dirty now and which of them you changed in this session; step 5 commits only the latter.
+
+**Done when:** you can name the branch, the last known-good commit, the current result of the check command, and which dirty files are yours.
 
 ## 2. Rewrite STATE.md — replace, never append
 
@@ -30,8 +32,10 @@ If `.ratchet/STATE.md` does not exist, copy the template first (`ratchet-init` i
 - **Delete what is stale.** Finished items leave "Working on". History older than this workstream leaves "Completed". This file is a dashboard, not a diary.
 - **Point, don't copy.** Anything already captured elsewhere — a commit, a PR, an issue, a spec, a decision entry — is referenced by hash, number, or path. Duplicated text goes stale; a pointer does not.
 - **Keep only what cannot be inferred.** If a fresh agent could learn it from the code, the tests, or `git log`, it does not belong here. What belongs: why the obvious approach was rejected, which check is flaky and how, what is half-done and in which file.
+- **Tag every "Working on" line** with exactly one status: `[merged #N]`, `[open PR #N]`, `[in flight <branch>]`, `[verified, uncommitted]`, `[reverted #N]`, or `[planned, not started]`. A line with no tag is not done, so tag it. `ratchet-pickup` checks each tag against git before trusting it.
 - **"Next" is ordered and concrete** — the next three actions, each startable without asking anyone.
-- **"Open risks / assumptions"** takes the ASSUMED bin from `ratchet-done`, if you ran it.
+- **"Open risks / assumptions"** takes the ASSUMED and INCONCLUSIVE bins from `ratchet-done`, if you ran it.
+- **Long or unattended runs keep a run log.** `scripts/runlog.sh <logfile> <phase> <decision> <why> <evidence> <result>` appends one tab-separated row per decision point to a local file, by convention `.ratchet/run.tsv`, gitignored unless the owner wants the trail committed. Evidence is a pointer (commit, PR, `file:line`, artifact path), result is a state (`tests green`, `reverted`, `INCONCLUSIVE`, `open`). Append-only: a wrong call gets a superseding row. "Verification status" then points at the last rows instead of restating them.
 - Fill in "Last handoff": date, tool and model, branch, last known-good commit.
 
 **Done when:** every section is current or says `None`, no `FILL-ME` remains, and nothing in it repeats what `git log` already says.
@@ -52,8 +56,16 @@ Never edit or delete an existing entry. To change one, mark it `superseded` and 
 
 Read both files once more for anything that must not be repository-visible: secrets, tokens, credentials, customer or personal data, sensitive incident detail, pasted transcripts. Replace each with a sanitized reference to where the protected information lives.
 
-## 5. Say what you did
+## 5. Make it durable — after the memory files are written, not before
 
-Tell the owner: that `STATE.md` is current for this branch, which decisions were recorded, which are awaiting approval, and — if the next session will use skills — which ones it should start with. If the branch has uncommitted work, say so; a handoff describing work that exists only in a working tree is fragile.
+If this handoff crosses a boundary — a new session, another tool or model, context about to be compacted — commit now, as one `wip: <what>` commit on the current branch: the files **you changed in this session** plus the `.ratchet/STATE.md` and `.ratchet/DECISIONS.md` you just rewrote. This step comes after steps 2–4 on purpose: a commit made before the state file is written leaves the handoff itself uncommitted, which is the one thing this step exists to prevent. Skip it only if the owner has said not to commit. Never push and never open a PR to pause. If the tree is broken, say so in one line of the commit body.
+
+Only your own work goes in that commit. A file that was already dirty when you started, a generated file you did not mean to touch, or any change you cannot attribute to this session stays in the working tree, uncommitted, and is listed by path under "Open risks / assumptions" so the next agent and the owner can decide what it is. If you cannot tell your changes apart from pre-existing ones, commit nothing and say so. A handoff describing work that exists only in a working tree is fragile, but a `wip:` commit carrying someone else's edits is worse.
+
+**Done when:** `git status --short` shows nothing you produced, including the two memory files, or you can name every remaining dirty path and why it stays.
+
+## 6. Say what you did
+
+Tell the owner: that `STATE.md` is current for this branch and committed, which decisions were recorded, which are awaiting approval, and — if the next session will use skills — which ones it should start with (`ratchet-pickup` first). List every file still uncommitted, with the reason, whatever the reason is: the owner declined the commit, the file was not yours, or you could not attribute it.
 
 <sub>"Point, don't copy", the suggested-skills note, and the three-part decision filter are adapted from the `handoff` and `domain-modeling` skills in [mattpocock/skills](https://github.com/mattpocock/skills) (MIT). See `../CREDITS.md`.</sub>

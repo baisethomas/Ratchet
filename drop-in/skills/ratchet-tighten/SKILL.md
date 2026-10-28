@@ -17,7 +17,7 @@ Fixing the instance is a separate task and comes first. This skill starts once t
 
 ## 2. Check it is not already covered
 
-Read what exists before adding anything: the check command and CI, `.claude/hooks/`, the skills, `AGENTS.md`. A guard that exists but is unwired, silently broken, or never triggered is the finding — fix that instead of adding a second one.
+Read what exists before adding anything: the enforcement table and check command in `AGENTS.md`, CI, `.claude/hooks/`, the skills. A guard that exists but is unwired, silently broken, or never triggered is the finding — fix that instead of adding a second one. If the rule that was broken sits in a **prose only** row of the table, that row is the finding: a repeat through an unenforced rule means the rule is promoted to a check in this same change, not restated.
 
 ## 3. Pick the layer — mechanical beats prose
 
@@ -28,6 +28,8 @@ Choose the **first** option that can catch this class of failure:
 3. **A rule in `AGENTS.md`** — last, and only for judgement that must hold at all times. Every line there is loaded into every session of every model, including the weakest one, and competes with every other line for attention.
 4. **Project memory** — if the cause was missing knowledge rather than missing discipline, it belongs in `.ratchet/STATE.md` or a `DECISIONS.md` entry, not in a rule.
 5. **Authority** — if the failure was an action that should have needed a human, add it to the hard stops and, where a pattern exists, to the guard hook.
+
+For options 2 and 3, the line carries a one-clause example of the failure it prevents. A rule with no example is the easiest line in the file to skim past, and the example is what lets a later reader judge whether the rule still earns its place.
 
 If the honest answer is "the design made this failure easy," say that to the owner before adding machinery. Ratchet should not grow guards around something that should be simplified.
 
@@ -44,6 +46,7 @@ If the honest answer is "the design made this failure easy," say that to the own
 ## 5. Keep the system small
 
 - **One** correction per escape. If you want to add three, you have not found the right layer.
+- Update the enforcement table in `AGENTS.md` in the same change: the row now names the new check, or disappears because the mistake can no longer happen. The table is how the next `ratchet-tighten` knows which rules are still held by prose alone.
 - When adding a line to `AGENTS.md` or a skill, look for one to delete: a rule now enforced by a check, or a sentence the model already obeys by default. The test for a no-op is whether removing it changes behavior, not whether it sounds important.
 - Rewording `AGENTS.md`, an adapter, or the hard stops is orchestrator-tier work and is shown to the owner as a diff before it lands.
 

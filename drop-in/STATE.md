@@ -29,7 +29,9 @@ FILL-ME
 
 ## Working on
 
-<!-- What is actively in flight on this branch/workstream right now? -->
+<!-- What is actively in flight on this branch/workstream right now? One status tag per line:
+     [merged #N] [open PR #N] [in flight <branch>] [verified, uncommitted] [reverted #N] [planned, not started]
+     A line with no tag is not done. The next agent checks each tag against git before trusting it. -->
 - FILL-ME
 
 ## Next

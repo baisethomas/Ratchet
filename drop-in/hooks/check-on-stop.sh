@@ -94,13 +94,19 @@ for check in "${CHECKS[@]}"; do
   fi
 done
 
-# Project memory left as a template is not done. A leftover FILL-ME is a fixed
-# pattern, so it gets a check here rather than a rule the model has to remember.
-# STATE.md is checked whole. DECISIONS.md keeps FILL-ME in its "Decision format"
-# example by design, so only the part from "## Decisions" onward is checked.
+# Project memory left as a template is not done. A leftover placeholder is a
+# fixed pattern, so it gets a check here rather than a rule the model has to
+# remember. Two placeholders ship in the templates: FILL-ME, which is a
+# sentinel and matches anywhere, and the literal YYYY-MM-DD, which is also
+# ordinary prose ("the API wants YYYY-MM-DD") and so matches only where the
+# templates put it: STATE.md's "- Updated: YYYY-MM-DD" line and a decision's
+# "- **Date:** YYYY-MM-DD" line. STATE.md is checked whole. DECISIONS.md keeps
+# both placeholders in its "Decision format" example by design, so only the
+# part from "## Decisions" onward is checked.
+placeholder='FILL-ME|^[[:space:]]*- (Updated:|\*\*Date:\*\*) YYYY-MM-DD'
 memory_gaps=""
-if [ -f .ratchet/STATE.md ] && grep -n 'FILL-ME' .ratchet/STATE.md >/dev/null 2>&1; then
-  memory_gaps="${memory_gaps}--- .ratchet/STATE.md still contains FILL-ME ---"$'\n'"$(grep -n 'FILL-ME' .ratchet/STATE.md | head -10)"$'\n'
+if [ -f .ratchet/STATE.md ] && grep -En "$placeholder" .ratchet/STATE.md >/dev/null 2>&1; then
+  memory_gaps="${memory_gaps}--- .ratchet/STATE.md still contains a template placeholder (FILL-ME or YYYY-MM-DD) ---"$'\n'"$(grep -En "$placeholder" .ratchet/STATE.md | head -10)"$'\n'
 fi
 if [ -f .ratchet/DECISIONS.md ]; then
   # No "## Decisions" marker (renamed, removed): check the whole file rather than
@@ -112,9 +118,9 @@ if [ -f .ratchet/DECISIONS.md ]; then
   fi
   # grep without -q: under pipefail, a grep that exits on the first match can leave
   # printf with SIGPIPE on a large ledger, and the pipeline reads as "no match".
-  hits=$(printf '%s' "$recorded" | grep -n 'FILL-ME' | head -10)
+  hits=$(printf '%s' "$recorded" | grep -En "$placeholder" | head -10)
   if [ -n "$hits" ]; then
-    memory_gaps="${memory_gaps}--- .ratchet/DECISIONS.md has FILL-ME inside a recorded decision ---"$'\n'"${hits}"$'\n'
+    memory_gaps="${memory_gaps}--- .ratchet/DECISIONS.md has a template placeholder (FILL-ME or YYYY-MM-DD) inside a recorded decision ---"$'\n'"${hits}"$'\n'
   fi
 fi
 if [ -n "$memory_gaps" ]; then
