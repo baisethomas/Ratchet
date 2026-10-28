@@ -6,7 +6,7 @@ disable-model-invocation: true
 
 # Ratchet init — install into this repository
 
-Run on request only. This writes files at the repo root; nothing here is done on the agent's own initiative.
+Run on request only. This writes files at the repo root; nothing here is done on the agent's own initiative. A repo that already has Ratchet and needs a newer release is `ratchet-upgrade`'s job, not this one's: the installer never overwrites.
 
 The installer never overwrites. The judgement — what the check command is, which modules are high-risk, how hooks merge into existing settings — is yours, and every answer is shown to the owner before it is written.
 

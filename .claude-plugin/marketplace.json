@@ -10,7 +10,7 @@
     {
       "name": "ratchet",
       "source": "./drop-in",
-      "description": "Ratchet's seven skills plus the destructive-command guard, as a Claude Code plugin. Install the per-repo contract and memory with /ratchet:ratchet-init.",
+      "description": "Ratchet's eight skills plus the destructive-command guard, as a Claude Code plugin. Install the per-repo contract and memory with /ratchet:ratchet-init.",
       "category": "productivity",
       "keywords": [
         "verification",

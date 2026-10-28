@@ -1,4 +1,5 @@
 # AGENTS.md — Canonical Working Rules for This Repository
+<!-- ratchet-version: 1.2.0 -->
 
 <!--
 DROP-IN: place this file at the repo root.
