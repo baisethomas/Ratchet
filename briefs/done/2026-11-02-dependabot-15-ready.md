@@ -2,7 +2,7 @@
 
 **Project:** Ratchet
 **Created:** 2026-11-02
-**Status:** open
+**Status:** closed 2026-11-02. Outcome: recommend not merging until Ternary is fixed; #15 itself is clean. Verifier: all PASS except the main-run link, where the PR #14 run was accepted as a substitute by the operator.
 
 ## Task
 
