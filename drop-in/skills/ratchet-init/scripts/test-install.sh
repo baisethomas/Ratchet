@@ -8,7 +8,7 @@ set -uo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 install="$here/install.sh"
 dropin="$("$here/source-root.sh" "$here")" || {
-  echo "FAIL: could not resolve the drop-in source from $here (need AGENTS.md beside skills/, or a checkout with drop-in/)"
+  echo "FAIL: could not resolve the drop-in source from $here (need a Ratchet drop-in: AGENTS.md, skills/, STATE.md, DECISIONS.md, .claude-plugin/plugin.json name ratchet)"
   exit 1
 }
 
