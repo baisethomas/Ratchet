@@ -15,6 +15,7 @@ Ternary blocked the Ratchet install in loomlogic-agent-environment (PR #4, check
 - [ ] `drop-in/hooks/test-hooks.sh` has new regression cases for both fail-open paths, and the full hook test suite passes.
 - [ ] RRR is proven for the fail-open fix: revert the fix, the new test fails; restore it, the test passes (`RRR: PROVEN` line in the PR body).
 - [ ] Installing into a scratch repo with `install.sh` leaves `upgrade.sh` executable (shown with `ls -l` or `git ls-files -s`), or the installer is fixed so it does.
+- [ ] (Added 2026-11-04 2:31 PM PT) Fix the source-root traversal for installed copies of `ratchet-init`. Ternary flagged `.agents/skills/ratchet-init/SKILL.md:14` on granted-ai #63 (run 126905345177). When the skills are installed under `.agents/skills/`, three levels up from SKILL.md is `.agents`, not the repo root, so the source isn't found and the regression suite skips silently. Correct the level logic and wording in `drop-in/skills/ratchet-init/SKILL.md`, and in any script that does the same traversal, for both the plugin layout and the installed `.agents/skills/` layout. Add a test that fails instead of skipping when the source isn't found. Show it passing for both layouts.
 - [ ] The existing test suites (`test-rrr.sh`, `test-upgrade.sh`, and any other repo tests or CI) pass.
 
 ## Evidence required
@@ -51,4 +52,4 @@ If the repo has `.ratchet/`, follow its AGENTS.md:
 
 ## Notes from the CoS
 
-This blocks the Ratchet installs on granted-ai (#63) and loomlogic-agent-environment (#4), which are both on hold. Ternary's other two notes on loomlogic #4 were a false "files not in diff" warning and the exec-bit suggestion covered above. Fix only what's listed; don't refactor the other hooks.
+This blocks the Ratchet installs on granted-ai (#63) and loomlogic-agent-environment (#4), which are both on hold. Ternary's other two notes on loomlogic #4 were a false "files not in diff" warning and the exec-bit suggestion covered above. Scope was widened once, with the ratchet-init traversal item above, under Baise's decision to fix upstream issues upstream. Fix only what's listed; don't refactor the other hooks.
