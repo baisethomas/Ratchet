@@ -7,9 +7,10 @@
 # directory. Required: AGENTS.md, skills/, STATE.md, DECISIONS.md, and
 # .claude-plugin/plugin.json whose name is "ratchet".
 #
-# Plugin layout: SKILL.md → ratchet-init/ → skills/ → plugin root (3 levels).
-# Installed .agents/skills layout: SKILL.md → ratchet-init/ → skills/ →
-# .agents/ → repo root (4 levels); drop-in/ lives at the checkout root.
+# Plugin layout: SKILL.md → skill dir → skills/ → plugin root (3 levels).
+# Installed .agents/skills or .claude/skills layout: SKILL.md → skill dir →
+# skills/ → .agents or .claude → repo root (4 levels); drop-in/ lives at the
+# checkout root.
 #
 # Usage: source-root.sh [START_DIR]
 # Prints the source root on stdout. Exit 0 if found, 1 if not. Never skips.

@@ -497,6 +497,33 @@ out=$(printf '{"tool_input":{"command":"git push origin --force"}}' | "$pf_stub/
 printf '%s' "$out" | grep -q "BLOCKED by guard hook" && pass=$((pass + 1)) || { fail=$((fail + 1)); echo "FAIL: unexpected helper exit should print a BLOCKED message"; }
 rm -rf "$pf_stub"
 
+echo "== guard: must FAIL CLOSED when lib-payload.sh cannot be loaded =="
+# Missing or unreadable helper: cannot verify => block, with a message that
+# names the library, not a generic parser error.
+lib_stub=$(mktemp -d)
+cp ./guard-destructive.sh "$lib_stub/"
+chmod +x "$lib_stub/guard-destructive.sh"
+assert_lib_load() {
+  local label="$1" actual out
+  out=$(printf '{"tool_input":{"command":"git push origin --force"}}' | "$lib_stub/guard-destructive.sh" 2>&1 >/dev/null)
+  actual=$?
+  if [ "$actual" -ne 2 ]; then
+    fail=$((fail + 1))
+    printf 'FAIL: expected exit 2, got %s for: %s\n' "$actual" "$label"
+    return
+  fi
+  if ! printf '%s' "$out" | grep "BLOCKED by guard hook" | grep -q "lib-payload.sh"; then
+    fail=$((fail + 1)); printf 'FAIL: %s: BLOCKED line should name lib-payload.sh, got: %s\n' "$label" "$out"; return
+  fi
+  pass=$((pass + 1))
+}
+assert_lib_load 'lib-payload.sh missing'
+cp ./lib-payload.sh "$lib_stub/"
+chmod a-r "$lib_stub/lib-payload.sh"
+assert_lib_load 'lib-payload.sh unreadable'
+chmod u+r "$lib_stub/lib-payload.sh"
+rm -rf "$lib_stub"
+
 echo "== lint hook: non-lintable and missing paths are skipped =="
 for payload in '{"tool_input":{"file_path":"README.md"}}' '{}'; do
   echo "$payload" | ./lint-edited-file.sh >/dev/null 2>&1

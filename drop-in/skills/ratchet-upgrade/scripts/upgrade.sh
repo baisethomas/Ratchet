@@ -2,8 +2,11 @@
 # ratchet-version: 1.2.1
 # Upgrade Ratchet's per-repo drop-ins to a newer release without losing the owner's edits.
 #
-#   upgrade.sh --from <ratchet>/drop-in --to <repo root> [--base <drop-in at the installed version>]
+#   upgrade.sh --to <repo root> [--from <ratchet>/drop-in] [--base <drop-in at the installed version>]
 #              [--installed-version X.Y.Z] [--apply <path> ...] [--apply-all]
+#
+# --from defaults to the drop-in/plugin root found by walking up from this script
+# (the same walk as ratchet-init's source-root.sh). Pass --from to override.
 #
 # The installer never overwrites, so a repo set up from an older release keeps the old
 # contract, adapters, and hooks forever. This script closes that gap in two modes.
@@ -46,7 +49,7 @@ from=""; to=""; base=""; installed_version=""; apply_all=0
 apply=()
 
 usage() {
-  sed -n '3,5p' "$0" | sed 's/^# \{0,1\}//' >&2
+  sed -n '5,9p' "$0" | sed 's/^# \{0,1\}//' >&2
   exit 2
 }
 
@@ -64,7 +67,12 @@ done
 
 die() { printf 'upgrade: %s\n' "$1" >&2; exit 2; }
 
-[ -n "$from" ] && [ -n "$to" ] || usage
+[ -n "$to" ] || usage
+if [ -z "$from" ]; then
+  resolver="$(dirname "$0")/../../ratchet-init/scripts/source-root.sh"
+  [ -x "$resolver" ] || die "cannot resolve --from ($resolver is missing or not executable); pass --from <drop-in>"
+  from="$("$resolver" "$(dirname "$0")")" || die "cannot resolve the drop-in source from $(dirname "$0"); pass --from <drop-in>"
+fi
 [ -f "$from/AGENTS.md" ] || die "$from does not look like Ratchet's drop-in directory (no AGENTS.md)"
 [ -d "$to" ] || die "$to is not a directory"
 git -C "$to" rev-parse --is-inside-work-tree >/dev/null 2>&1 || die "$to is not inside a git work tree"

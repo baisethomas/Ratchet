@@ -55,6 +55,45 @@ if [ "$code" -eq 0 ] && [ "$got" = "$want" ]; then ok; else
   no "installed layout from skill dir: expected $want (exit 0), got ${got:-<empty>} (exit $code)"
 fi
 
+echo "== installed .claude/skills layout: same walk as .agents/skills =="
+# install.sh links .claude/skills -> ../.agents/skills, or makes a real directory
+# of per-skill links. Either way the walk must reach drop-in/, not stop in .claude.
+mkdir -p "$co/.agents/skills/ratchet-init/scripts" "$co/.claude"
+ln -s "../.agents/skills" "$co/.claude/skills"
+got="$("$resolve" "$co/.claude/skills/ratchet-init/scripts" 2>/dev/null)" && code=0 || code=$?
+if [ "$code" -eq 0 ] && [ "$got" = "$want" ]; then ok; else
+  no ".claude/skills symlink from scripts/: expected $want (exit 0), got ${got:-<empty>} (exit $code)"
+fi
+got="$("$resolve" "$co/.claude/skills/ratchet-init" 2>/dev/null)" && code=0 || code=$?
+if [ "$code" -eq 0 ] && [ "$got" = "$want" ]; then ok; else
+  no ".claude/skills symlink from skill dir: expected $want (exit 0), got ${got:-<empty>} (exit $code)"
+fi
+cldir="$sandbox/claude-dir"
+stamp_dropin "$cldir/drop-in"
+mkdir -p "$cldir/.agents/skills/ratchet-init/scripts" "$cldir/.claude/skills"
+ln -s "../../.agents/skills/ratchet-init" "$cldir/.claude/skills/ratchet-init"
+got="$("$resolve" "$cldir/.claude/skills/ratchet-init/scripts" 2>/dev/null)" && code=0 || code=$?
+if [ "$code" -eq 0 ] && [ "$got" = "$cldir/drop-in" ]; then ok; else
+  no ".claude/skills per-skill link: expected $cldir/drop-in (exit 0), got ${got:-<empty>} (exit $code)"
+fi
+
+echo "== plugin and installed layouts from ratchet-upgrade/scripts =="
+# The same resolver, started from the sibling skill, must find the same roots.
+up_plugin="$sandbox/up-plugin"
+stamp_dropin "$up_plugin"
+mkdir -p "$up_plugin/skills/ratchet-upgrade/scripts"
+got="$("$resolve" "$up_plugin/skills/ratchet-upgrade/scripts" 2>/dev/null)" && code=0 || code=$?
+if [ "$code" -eq 0 ] && [ "$got" = "$up_plugin" ]; then ok; else
+  no "upgrade plugin layout: expected $up_plugin (exit 0), got ${got:-<empty>} (exit $code)"
+fi
+up_inst="$sandbox/up-checkout"
+stamp_dropin "$up_inst/drop-in"
+mkdir -p "$up_inst/.agents/skills/ratchet-upgrade/scripts"
+got="$("$resolve" "$up_inst/.agents/skills/ratchet-upgrade/scripts" 2>/dev/null)" && code=0 || code=$?
+if [ "$code" -eq 0 ] && [ "$got" = "$up_inst/drop-in" ]; then ok; else
+  no "upgrade installed layout: expected $up_inst/drop-in (exit 0), got ${got:-<empty>} (exit $code)"
+fi
+
 echo "== installed layout under an unrelated AGENTS.md+skills/ repo is not a source =="
 # Ternary: walking from .agents/skills reaches the target root. AGENTS.md plus
 # a top-level skills/ directory is common and is not a Ratchet drop-in.
@@ -93,6 +132,21 @@ else
 fi
 printf '%s' "$out" | grep -q '^SKIP' && no "test-install.sh missing source: printed SKIP (silent pass)" || ok
 printf '%s' "$out" | grep -q 'FAIL' && ok || no "test-install.sh missing source: should say FAIL, got: $out"
+
+echo "== test-upgrade.sh fails instead of skipping when the source isn't found =="
+up="$sandbox/noup/.agents/skills"
+mkdir -p "$up/ratchet-upgrade/scripts" "$up/ratchet-init/scripts"
+upgrade_src="$(cd "$here/../../ratchet-upgrade/scripts" && pwd)"
+cp "$upgrade_src/test-upgrade.sh" "$upgrade_src/upgrade.sh" "$up/ratchet-upgrade/scripts/"
+cp "$here/source-root.sh" "$up/ratchet-init/scripts/"
+chmod +x "$up/ratchet-upgrade/scripts/"* "$up/ratchet-init/scripts/"*
+out="$("$up/ratchet-upgrade/scripts/test-upgrade.sh" 2>&1)" && code=0 || code=$?
+if [ "$code" -eq 0 ]; then
+  no "test-upgrade.sh missing source: expected non-zero, got 0. output: $out"
+else
+  ok
+fi
+printf '%s' "$out" | grep -q '^SKIP' && no "test-upgrade.sh missing source: printed SKIP (silent pass)" || ok
 
 printf '\n%s passed, %s failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

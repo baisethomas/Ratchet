@@ -29,8 +29,18 @@
 
 set -uo pipefail
 
+lib="$(dirname "${BASH_SOURCE[0]}")/lib-payload.sh"
+# Cannot verify if the helper is missing, unreadable, or fails to source: an
+# unread payload would look like an empty command and fail open.
+if [ ! -r "$lib" ]; then
+  echo "BLOCKED by guard hook: cannot load lib-payload.sh (missing or unreadable), so destructive commands cannot be checked." >&2
+  exit 2
+fi
 # shellcheck source=lib-payload.sh
-. "$(dirname "${BASH_SOURCE[0]}")/lib-payload.sh"
+. "$lib" || {
+  echo "BLOCKED by guard hook: cannot load lib-payload.sh, so destructive commands cannot be checked." >&2
+  exit 2
+}
 
 input=$(cat)
 
