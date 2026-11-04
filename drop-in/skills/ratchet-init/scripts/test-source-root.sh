@@ -19,10 +19,19 @@ trap 'rm -rf "$sandbox"' EXIT
 
 [ -x "$resolve" ] || { echo "FAIL: $resolve is missing or not executable"; exit 1; }
 
-echo "== plugin layout: AGENTS.md sits beside skills/, three levels above SKILL.md =="
+# stamp_dropin <dir> — the files that identify a Ratchet drop-in/plugin root,
+# not merely AGENTS.md beside a skills/ directory.
+stamp_dropin() {
+  mkdir -p "$1/skills/ratchet-init/scripts" "$1/.claude-plugin"
+  printf '# contract\n' > "$1/AGENTS.md"
+  printf '# state\n' > "$1/STATE.md"
+  printf '# decisions\n' > "$1/DECISIONS.md"
+  printf '{"name": "ratchet"}\n' > "$1/.claude-plugin/plugin.json"
+}
+
+echo "== plugin layout: a Ratchet drop-in/plugin root, three levels above SKILL.md =="
 plugin="$sandbox/plugin"
-mkdir -p "$plugin/skills/ratchet-init/scripts"
-printf '# contract\n' > "$plugin/AGENTS.md"
+stamp_dropin "$plugin"
 got="$("$resolve" "$plugin/skills/ratchet-init/scripts" 2>/dev/null)" && code=0 || code=$?
 if [ "$code" -eq 0 ] && [ "$got" = "$plugin" ]; then ok; else
   no "plugin layout from scripts/: expected $plugin (exit 0), got ${got:-<empty>} (exit $code)"
@@ -34,9 +43,8 @@ fi
 
 echo "== installed .agents/skills layout: four levels up is the repo; drop-in/ lives there =="
 co="$sandbox/checkout"
-mkdir -p "$co/drop-in/skills/ratchet-init/scripts"
+stamp_dropin "$co/drop-in"
 mkdir -p "$co/.agents/skills/ratchet-init/scripts"
-printf '# contract\n' > "$co/drop-in/AGENTS.md"
 want="$co/drop-in"
 got="$("$resolve" "$co/.agents/skills/ratchet-init/scripts" 2>/dev/null)" && code=0 || code=$?
 if [ "$code" -eq 0 ] && [ "$got" = "$want" ]; then ok; else
@@ -45,6 +53,18 @@ fi
 got="$("$resolve" "$co/.agents/skills/ratchet-init" 2>/dev/null)" && code=0 || code=$?
 if [ "$code" -eq 0 ] && [ "$got" = "$want" ]; then ok; else
   no "installed layout from skill dir: expected $want (exit 0), got ${got:-<empty>} (exit $code)"
+fi
+
+echo "== installed layout under an unrelated AGENTS.md+skills/ repo is not a source =="
+# Ternary: walking from .agents/skills reaches the target root. AGENTS.md plus
+# a top-level skills/ directory is common and is not a Ratchet drop-in.
+fp="$sandbox/falsepos"
+mkdir -p "$fp/skills/unrelated" "$fp/.agents/skills/ratchet-init/scripts"
+printf '# some other contract\n' > "$fp/AGENTS.md"
+printf '# not ratchet\n' > "$fp/skills/unrelated/README.md"
+got="$("$resolve" "$fp/.agents/skills/ratchet-init/scripts" 2>/dev/null)" && code=0 || code=$?
+if [ "$code" -ne 0 ]; then ok; else
+  no "unrelated AGENTS.md+skills/: expected fail, got $got (exit $code)"
 fi
 
 echo "== no source in the tree: must FAIL, not skip =="

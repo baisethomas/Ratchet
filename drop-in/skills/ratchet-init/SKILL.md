@@ -12,9 +12,9 @@ The installer never overwrites. The judgement — what the check command is, whi
 
 ## 1. Find the source and look at the target
 
-- **Source:** a complete Ratchet `drop-in/` directory. Walk up from this file until one of these matches; `scripts/source-root.sh` is the same walk and fails (it never skips) when neither does:
-  - **Plugin layout:** a directory that contains `AGENTS.md` beside a `skills/` directory. That is the plugin root (`SKILL.md` → `ratchet-init/` → `skills/` → the root, three levels) — use it.
-  - **Installed `.agents/skills` layout:** three levels up is `.agents`, not the repo root. Four levels up is the repo root. If that tree, or a parent, contains `drop-in/AGENTS.md`, use `drop-in/`. Otherwise this copy is not a source: ask for the path to a Ratchet checkout, or offer to clone `https://github.com/baisethomas/Ratchet` into a temporary directory; cloning is a network call, so wait for a yes.
+- **Source:** a complete Ratchet `drop-in/` directory. Walk up from this file until one of these matches; `scripts/source-root.sh` is the same walk and fails (it never skips) when neither does. `AGENTS.md` beside a `skills/` directory is not enough — that is a common target-repo shape. A source must also have `STATE.md`, `DECISIONS.md`, and `.claude-plugin/plugin.json` with `"name": "ratchet"`:
+  - **Plugin layout:** that set at the plugin root (`SKILL.md` → `ratchet-init/` → `skills/` → the root, three levels) — use it.
+  - **Installed `.agents/skills` layout:** three levels up is `.agents`, not the repo root. Four levels up is the repo root. If that tree, or a parent, contains a `drop-in/` that passes the same check, use `drop-in/`. Otherwise this copy is not a source: ask for the path to a Ratchet checkout, or offer to clone `https://github.com/baisethomas/Ratchet` into a temporary directory; cloning is a network call, so wait for a yes.
 - **Target:** read before proposing anything — which of `AGENTS.md`, `CLAUDE.md`, `CODEX.md`, `.ratchet/`, `.agents/skills/`, `.claude/skills/`, `.claude/hooks/`, `.claude/settings.json` already exist; the build and test tooling (`package.json` scripts, `Makefile`, `pyproject.toml`, CI workflows); which agent tools the owner uses here.
 
 **Done when:** you can list what exists, what is missing, and which tools (Claude Code, Codex, other) are in play.
