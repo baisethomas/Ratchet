@@ -462,6 +462,75 @@ echo '{}' | ./guard-destructive.sh >/dev/null 2>&1
 echo 'not json' | ./guard-destructive.sh >/dev/null 2>&1
 [ $? -eq 2 ] && pass=$((pass + 1)) || { fail=$((fail + 1)); echo "FAIL: non-JSON payload should exit 2 (cannot verify => block)"; }
 
+echo "== guard: must FAIL CLOSED on empty stdin and unexpected payload_field exit =="
+# Empty stdin is unparseable: cannot verify => block. Distinct from valid JSON
+# with no command field, which is allowed above.
+printf '' | ./guard-destructive.sh >/dev/null 2>&1
+[ $? -eq 2 ] && pass=$((pass + 1)) || { fail=$((fail + 1)); echo "FAIL: empty stdin should exit 2 (cannot verify => block)"; }
+
+# payload_field is specified to return 0, 1, or 2. Any other status used to
+# fall through, treat the empty capture as "no command", and allow a
+# destructive payload. Stage a copy of the real guard with a stub helper so
+# the test drives those statuses without rewriting the production function.
+pf_stub=$(mktemp -d)
+cp ./guard-destructive.sh "$pf_stub/"
+chmod +x "$pf_stub/guard-destructive.sh"
+assert_pf_status() {
+  local expected="$1" status="$2" label="$3" actual
+  printf 'payload_field() { return %s; }\n' "$status" > "$pf_stub/lib-payload.sh"
+  printf '{"tool_input":{"command":"git push origin --force"}}' \
+    | "$pf_stub/guard-destructive.sh" >/dev/null 2>&1
+  actual=$?
+  if [ "$actual" -eq "$expected" ]; then
+    pass=$((pass + 1))
+  else
+    fail=$((fail + 1))
+    printf 'FAIL: expected exit %s, got %s for: %s\n' "$expected" "$actual" "$label"
+  fi
+}
+assert_pf_status 2 3 'payload_field returns 3 (unexpected)'
+assert_pf_status 2 127 'payload_field returns 127 (unexpected)'
+# The deny must be visible: a silent exit 2 is better than fail-open, but the
+# contract is a clear block message.
+printf 'payload_field() { return 3; }\n' > "$pf_stub/lib-payload.sh"
+out=$(printf '{"tool_input":{"command":"git push origin --force"}}' | "$pf_stub/guard-destructive.sh" 2>&1 >/dev/null)
+printf '%s' "$out" | grep -q "BLOCKED by guard hook" && pass=$((pass + 1)) || { fail=$((fail + 1)); echo "FAIL: unexpected helper exit should print a BLOCKED message"; }
+rm -rf "$pf_stub"
+
+echo "== guard: must FAIL CLOSED when lib-payload.sh cannot be loaded =="
+# Missing or unreadable helper: cannot verify => block, with a message that
+# names the library, not a generic parser error.
+lib_stub=$(mktemp -d)
+cp ./guard-destructive.sh "$lib_stub/"
+chmod +x "$lib_stub/guard-destructive.sh"
+assert_lib_load() {
+  local label="$1" actual out
+  out=$(printf '{"tool_input":{"command":"git push origin --force"}}' | "$lib_stub/guard-destructive.sh" 2>&1 >/dev/null)
+  actual=$?
+  if [ "$actual" -ne 2 ]; then
+    fail=$((fail + 1))
+    printf 'FAIL: expected exit 2, got %s for: %s\n' "$actual" "$label"
+    return
+  fi
+  if ! printf '%s' "$out" | grep "BLOCKED by guard hook" | grep -q "lib-payload.sh"; then
+    fail=$((fail + 1)); printf 'FAIL: %s: BLOCKED line should name lib-payload.sh, got: %s\n' "$label" "$out"; return
+  fi
+  pass=$((pass + 1))
+}
+assert_lib_load 'lib-payload.sh missing'
+cp ./lib-payload.sh "$lib_stub/"
+chmod a-r "$lib_stub/lib-payload.sh"
+# chmod a-r does not hide the file from UID 0; [ -r ] stays true and bash
+# sources it, so the guard blocks the force-push instead of the load. Skip
+# the permission case when the chmod did not take — keep missing unconditional.
+if [ -r "$lib_stub/lib-payload.sh" ]; then
+  echo "SKIP: lib-payload.sh unreadable case needs a non-root runner (chmod a-r is still readable to UID 0)"
+else
+  assert_lib_load 'lib-payload.sh unreadable'
+fi
+chmod u+r "$lib_stub/lib-payload.sh" 2>/dev/null || chmod a+r "$lib_stub/lib-payload.sh"
+rm -rf "$lib_stub"
+
 echo "== lint hook: non-lintable and missing paths are skipped =="
 for payload in '{"tool_input":{"file_path":"README.md"}}' '{}'; do
   echo "$payload" | ./lint-edited-file.sh >/dev/null 2>&1

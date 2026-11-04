@@ -10,7 +10,12 @@
 set -uo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 upgrade="$here/upgrade.sh"
-dropin="$(cd "$here/../../.." && pwd -P)"
+resolver="$here/../../ratchet-init/scripts/source-root.sh"
+dropin="$("$resolver" "$here")" || {
+  echo "FAIL: could not resolve the drop-in source from $here"
+  exit 1
+}
+dropin="$(cd "$dropin" && pwd -P)"
 install="$dropin/skills/ratchet-init/scripts/install.sh"
 
 pass=0; fail=0
@@ -18,7 +23,7 @@ sandbox="$(mktemp -d "${TMPDIR:-/tmp}/test-upgrade.XXXXXX")"; sandbox="$(cd "$sa
 trap 'rm -rf "$sandbox"' EXIT
 export TMPDIR="$sandbox"   # staging directories land here and go with the sandbox
 
-[ -f "$dropin/AGENTS.md" ] && [ -x "$install" ] || { echo "SKIP: run this from a Ratchet checkout"; exit 0; }
+[ -x "$install" ] || { echo "FAIL: install.sh missing at $install"; exit 1; }
 
 ok() { pass=$((pass + 1)); }
 no() { fail=$((fail + 1)); printf 'FAIL: %s\n' "$1"; }
@@ -36,6 +41,12 @@ replace() { local t; t="$(mktemp)"; sed "$2" "$1" > "$t" && cat "$t" > "$1"; rm 
 
 new_version="$(sed -n 's/.*ratchet-version: *\([0-9][0-9.]*\).*/\1/p' "$dropin/AGENTS.md" | head -n 1)"
 [ -n "$new_version" ] && ok || no "the drop-in's AGENTS.md carries no ratchet-version marker"
+
+echo "== --from is optional: source-root.sh from this script finds the drop-in =="
+new_repo
+"$install" --from "$dropin" --to "$repo" >/dev/null 2>&1
+out="$("$upgrade" --to "$repo" 2>&1)"; code=$?
+[ "$code" -eq 0 ] && printf '%s' "$out" | grep -q "^FROM  $dropin" && ok || no "upgrade.sh without --from should resolve via source-root.sh (exit $code)"
 
 # An "old release": the current drop-in with the markers stripped (releases before 1.2
 # had none), the enforcement table removed from AGENTS.md, one hook comment reworded,
@@ -170,7 +181,7 @@ out="$("$upgrade" --from "$dropin" --to "$repo" --base "$old" --installed-versio
 
 echo "== setup errors exit 2 =="
 new_repo
-"$upgrade" --to "$repo" >/dev/null 2>&1; [ $? -eq 2 ] && ok || no "missing --from should be a usage error"
+"$upgrade" --from "$dropin" >/dev/null 2>&1; [ $? -eq 2 ] && ok || no "missing --to should be a usage error"
 "$upgrade" --from "$sandbox" --to "$repo" >/dev/null 2>&1; [ $? -eq 2 ] && ok || no "a source without AGENTS.md should be refused"
 mkdir -p "$repo/sub"
 "$upgrade" --from "$dropin" --to "$repo/sub" >/dev/null 2>&1; [ $? -eq 2 ] && ok || no "a subdirectory target should be refused"

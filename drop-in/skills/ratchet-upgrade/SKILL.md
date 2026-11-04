@@ -12,7 +12,7 @@ The script does the mechanical part: it compares every installed file with the n
 
 ## 1. Find the source, the target, and the installed version
 
-- **Source:** a complete Ratchet `drop-in/` at the new release. From the plugin, that is the plugin root (three levels above this file). Otherwise a Ratchet checkout's `drop-in/`.
+- **Source:** a complete Ratchet `drop-in/` at the new release. Walk up from this file the same way `ratchet-init` does (`scripts/../../ratchet-init/scripts/source-root.sh`, which fails rather than skips when nothing matches). Plugin layout: three levels up is the plugin root. Installed `.agents/skills` or `.claude/skills` layout: three levels up is `.agents` or `.claude`; four levels up is the repo root, where `drop-in/` lives if this is a Ratchet checkout. `upgrade.sh` uses that walk when `--from` is omitted. Otherwise pass `--from` to a Ratchet checkout's `drop-in/`.
 - **Target:** the repo root. Confirm `AGENTS.md` and `.ratchet/` exist; if not, this is an install, not an upgrade: use `ratchet-init`.
 - **Installed version:** `grep ratchet-version AGENTS.md` in the target. Releases before 1.2.0 carry no marker; tell them apart by content: an `AGENTS.md` with a "What enforces these rules" section is 1.1.0, one without is 1.0.0. Pass that as `--installed-version` once; the marker travels from then on.
 
