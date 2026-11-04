@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# ratchet-version: 1.2.0
+# ratchet-version: 1.2.1
 # PreToolUse(Bash) guard: surface the hard stops in AGENTS.md so irreversible
 # commands stop and go to a human instead of running by momentum.
 #
@@ -38,10 +38,18 @@ input=$(cat)
 # which would silently allow every destructive operation. "Cannot verify" must
 # never be treated as "nothing to block".
 command=$(payload_field "$input" '.tool_input.command' '?.tool_input?.command')
-case $? in
+pf_status=$?
+# payload_field is specified to return 0, 1, or 2. Any other status — helper
+# crash, command-not-found after a failed source, a future return code — used
+# to fall through, treat the empty capture as "no command", and allow the
+# tool through. Cannot verify => block.
+case $pf_status in
+  0) ;;
   1) echo "BLOCKED by guard hook: no JSON parser available (needs jq or node), so destructive commands cannot be checked. Install jq, then retry." >&2
      exit 2 ;;
   2) echo "BLOCKED by guard hook: could not parse the hook payload, so destructive commands cannot be checked. Fix the JSON parser (jq/node), then retry." >&2
+     exit 2 ;;
+  *) echo "BLOCKED by guard hook: payload parser exited $pf_status unexpectedly, so destructive commands cannot be checked. Fix the JSON parser (jq/node), then retry." >&2
      exit 2 ;;
 esac
 

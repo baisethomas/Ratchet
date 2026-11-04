@@ -462,6 +462,41 @@ echo '{}' | ./guard-destructive.sh >/dev/null 2>&1
 echo 'not json' | ./guard-destructive.sh >/dev/null 2>&1
 [ $? -eq 2 ] && pass=$((pass + 1)) || { fail=$((fail + 1)); echo "FAIL: non-JSON payload should exit 2 (cannot verify => block)"; }
 
+echo "== guard: must FAIL CLOSED on empty stdin and unexpected payload_field exit =="
+# Empty stdin is unparseable: cannot verify => block. Distinct from valid JSON
+# with no command field, which is allowed above.
+printf '' | ./guard-destructive.sh >/dev/null 2>&1
+[ $? -eq 2 ] && pass=$((pass + 1)) || { fail=$((fail + 1)); echo "FAIL: empty stdin should exit 2 (cannot verify => block)"; }
+
+# payload_field is specified to return 0, 1, or 2. Any other status used to
+# fall through, treat the empty capture as "no command", and allow a
+# destructive payload. Stage a copy of the real guard with a stub helper so
+# the test drives those statuses without rewriting the production function.
+pf_stub=$(mktemp -d)
+cp ./guard-destructive.sh "$pf_stub/"
+chmod +x "$pf_stub/guard-destructive.sh"
+assert_pf_status() {
+  local expected="$1" status="$2" label="$3" actual
+  printf 'payload_field() { return %s; }\n' "$status" > "$pf_stub/lib-payload.sh"
+  printf '{"tool_input":{"command":"git push origin --force"}}' \
+    | "$pf_stub/guard-destructive.sh" >/dev/null 2>&1
+  actual=$?
+  if [ "$actual" -eq "$expected" ]; then
+    pass=$((pass + 1))
+  else
+    fail=$((fail + 1))
+    printf 'FAIL: expected exit %s, got %s for: %s\n' "$expected" "$actual" "$label"
+  fi
+}
+assert_pf_status 2 3 'payload_field returns 3 (unexpected)'
+assert_pf_status 2 127 'payload_field returns 127 (unexpected)'
+# The deny must be visible: a silent exit 2 is better than fail-open, but the
+# contract is a clear block message.
+printf 'payload_field() { return 3; }\n' > "$pf_stub/lib-payload.sh"
+out=$(printf '{"tool_input":{"command":"git push origin --force"}}' | "$pf_stub/guard-destructive.sh" 2>&1 >/dev/null)
+printf '%s' "$out" | grep -q "BLOCKED by guard hook" && pass=$((pass + 1)) || { fail=$((fail + 1)); echo "FAIL: unexpected helper exit should print a BLOCKED message"; }
+rm -rf "$pf_stub"
+
 echo "== lint hook: non-lintable and missing paths are skipped =="
 for payload in '{"tool_input":{"file_path":"README.md"}}' '{}'; do
   echo "$payload" | ./lint-edited-file.sh >/dev/null 2>&1

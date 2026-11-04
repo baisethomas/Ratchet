@@ -7,14 +7,15 @@
 set -uo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 install="$here/install.sh"
-dropin="$(cd "$here/../../.." && pwd)"   # drop-in/ when run from the Ratchet repo
+dropin="$("$here/source-root.sh" "$here")" || {
+  echo "FAIL: could not resolve the drop-in source from $here (need AGENTS.md beside skills/, or a checkout with drop-in/)"
+  exit 1
+}
 
 pass=0
 fail=0
 sandbox="$(mktemp -d "${TMPDIR:-/tmp}/test-install.XXXXXX")"
 trap 'rm -rf "$sandbox"' EXIT
-
-[ -f "$dropin/AGENTS.md" ] || { echo "SKIP: run this from a Ratchet checkout (needs drop-in/AGENTS.md as the install source)"; exit 0; }
 
 ok() { pass=$((pass + 1)); }
 no() { fail=$((fail + 1)); printf 'FAIL: %s\n' "$1"; }
