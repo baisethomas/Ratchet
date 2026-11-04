@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# ratchet-version: 1.2.1
+# ratchet-version: 1.2.2
 # Upgrade Ratchet's per-repo drop-ins to a newer release without losing the owner's edits.
 #
 #   upgrade.sh --to <repo root> [--from <ratchet>/drop-in] [--base <drop-in at the installed version>]
@@ -13,7 +13,7 @@
 #
 # Report mode (default) writes nothing inside the repo. For every file the installer
 # would have placed it prints one line:
-#   SAME      installed copy is identical to the new release
+#   SAME      installed copy is identical to the new release (bytes and mode)
 #   MERGE     the owner's edits replay cleanly onto the new release (proposal staged)
 #   CONFLICT  the owner and the release changed the same lines (proposal with markers)
 #   NOBASE    changed, but no base to merge against; diff only (pass --base)
@@ -172,7 +172,19 @@ refused=0
 applied=0
 requested=0
 
-# write_file <source> <destination relative to $to> — the one place anything is written.
+# same_exec <a> <b> — both executable, or neither.
+same_exec() {
+  local a=0 b=0
+  [ -x "$1" ] && a=1
+  [ -x "$2" ] && b=1
+  [ "$a" -eq "$b" ]
+}
+
+# write_file <content source> <destination relative to $to> [<mode source>]
+# The one place anything is written. Content comes from arg 1 (the proposal, or
+# the new file). The executable bit comes from arg 3, defaulting to arg 1 — the
+# upstream template, never the destination. Keeping dest's mode made a mode-only
+# release look like SAME and left merges on the old bit.
 # A temp file beside the destination, then one rename: a reader never sees a half-written
 # file, and rename does not follow a symlink that appeared at the destination meanwhile.
 # The symlink check runs again here, right before the temp file is made and again right
@@ -183,12 +195,12 @@ requested=0
 # the working tree, which could edit these files directly; it is the same exposure
 # install.sh and git checkout have, and it is stated here rather than papered over.
 write_file() {
-  local src="$1" rel="$2" dest="$to/$2" tmp
+  local src="$1" rel="$2" mode_src="${3:-$1}" dest="$to/$2" tmp
   if [ -L "$dest" ] || linked_parent "$rel"; then printf 'REFUSE    %s (became a symlink)\n' "$rel"; refused=$((refused + 1)); return 1; fi
   mkdir -p "$(dirname "$dest")" || { printf 'REFUSE    %s (cannot create its directory)\n' "$rel"; refused=$((refused + 1)); return 1; }
   tmp="$(mktemp "$(dirname "$dest")/.ratchet-upgrade.XXXXXX")" || { printf 'REFUSE    %s (cannot stage a write)\n' "$rel"; refused=$((refused + 1)); return 1; }
   cp "$src" "$tmp" || { rm -f "$tmp"; printf 'REFUSE    %s (copy failed)\n' "$rel"; refused=$((refused + 1)); return 1; }
-  if [ -e "$dest" ]; then [ -x "$dest" ] && chmod +x "$tmp"; else [ -x "$src" ] && chmod +x "$tmp"; fi
+  if [ -x "$mode_src" ]; then chmod +x "$tmp"; else chmod -x "$tmp"; fi
   if [ -L "$dest" ] || linked_parent "$rel"; then rm -f "$tmp"; printf 'REFUSE    %s (became a symlink)\n' "$rel"; refused=$((refused + 1)); return 1; fi
   mv -f "$tmp" "$dest" || { rm -f "$tmp"; printf 'REFUSE    %s (move failed)\n' "$rel"; refused=$((refused + 1)); return 1; }
   return 0
@@ -207,15 +219,22 @@ consider() {
     fi
   elif [ "$kind" = "memory" ]; then
     status="MEMORY"; printf 'MEMORY    %s (live project memory, never written)\n' "$rel"
-  elif cmp -s "$src" "$dest"; then
+  elif cmp -s "$src" "$dest" && same_exec "$src" "$dest"; then
     status="SAME"; printf 'SAME      %s\n' "$rel"
+  elif cmp -s "$src" "$dest"; then
+    # Bytes match, mode does not. No merge is needed; apply copies the upstream bit.
+    proposal="$stage/$rel"; mkdir -p "$(dirname "$proposal")"
+    cp "$src" "$proposal"
+    status="MERGE"; printf 'MERGE     %s (executable bit differs; proposal staged)\n' "$rel"
   elif [ -n "$base" ] && [ -f "$base/${src#"$from"/}" ]; then
     proposal="$stage/$rel"; mkdir -p "$(dirname "$proposal")"
     git merge-file -p -L "installed" -L "ratchet ${installed_version:-base}" -L "ratchet $new_version" \
       "$dest" "$base/${src#"$from"/}" "$src" > "$proposal" 2>/dev/null
     n=$?
-    if [ "$n" -eq 0 ] && cmp -s "$proposal" "$dest"; then
+    if [ "$n" -eq 0 ] && cmp -s "$proposal" "$dest" && same_exec "$src" "$dest"; then
       status="CURRENT"; printf 'CURRENT   %s (installed edits are already on this release)\n' "$rel"
+    elif [ "$n" -eq 0 ] && cmp -s "$proposal" "$dest"; then
+      status="MERGE"; printf 'MERGE     %s (executable bit differs; proposal staged)\n' "$rel"
     elif [ "$n" -eq 0 ]; then
       status="MERGE"; printf 'MERGE     %s (%s hunks; proposal staged)\n' "$rel" "$(diff -u "$dest" "$proposal" | grep -c '^@@')"
     elif [ "$n" -ge 128 ]; then
@@ -246,8 +265,8 @@ consider() {
   fi
   requested=$((requested + 1))
   case "$status" in
-    MERGE)        write_file "$proposal" "$rel" && { printf 'UPGRADED  %s\n' "$rel"; applied=$((applied + 1)); } ;;
-    NEW)          write_file "$src" "$rel" && { printf 'ADDED     %s\n' "$rel"; applied=$((applied + 1)); } ;;
+    MERGE)        write_file "$proposal" "$rel" "$src" && { printf 'UPGRADED  %s\n' "$rel"; applied=$((applied + 1)); } ;;
+    NEW)          write_file "$src" "$rel" "$src" && { printf 'ADDED     %s\n' "$rel"; applied=$((applied + 1)); } ;;
     SAME|CURRENT) ;;
     *)            printf 'REFUSE    %s (%s)\n' "$rel" "$status"; refused=$((refused + 1)) ;;
   esac

@@ -227,6 +227,16 @@ if ! backups_intact; then
   die "the test command removed rrr's backup directory ($backup); nothing was reverted"
 fi
 
+# A test that rewrites the files under test during phase 1 used to still print
+# PROVEN: revert overwrote the edit, restore put the original backup back, and
+# fix_intact only ran after phase 3. Check after every phase.
+if ! fix_intact; then
+  restored=0
+  restore || exit 2
+  verdict "NOT PROVEN — the test command changed the fix files while it ran. They have been restored. Make the test leave the files it is testing alone, then run this again."
+  exit 1
+fi
+
 changed=0
 i=0
 for p in "${paths[@]}"; do
@@ -252,8 +262,42 @@ if [ "$changed" -eq 0 ]; then
   exit 1
 fi
 
+# Snapshot the reverted tree so phase 2 cannot rewrite it unnoticed. Original
+# backups stay at $backup/$i; these are $backup/reverted-$i.
+i=0
+for p in "${paths[@]}"; do
+  if [ -f "$p" ] && [ ! -L "$p" ]; then
+    cp -p "$p" "$backup/reverted-$i" && cmp -s "$p" "$backup/reverted-$i" || die "could not snapshot reverted $p"
+  else
+    rm -f "$backup/reverted-$i"
+  fi
+  i=$((i + 1))
+done
+
 run_phase "2/3 FIX REVERTED to $base (must FAIL)"
 reverted_code=$?
+
+# Same drift check against the reverted snapshot, not the original backup:
+# phase 2 is supposed to see the unfixed files.
+reverted_intact() {
+  local i=0 p
+  for p in "${paths[@]}"; do
+    if [ -f "$backup/reverted-$i" ]; then
+      [ -f "$p" ] && [ ! -L "$p" ] && cmp -s "$backup/reverted-$i" "$p" || return 1
+      if [ -x "$backup/reverted-$i" ]; then [ -x "$p" ] || return 1; else [ -x "$p" ] && return 1; fi
+    else
+      { [ -e "$p" ] || [ -L "$p" ]; } && return 1
+    fi
+    i=$((i + 1))
+  done
+  return 0
+}
+if ! reverted_intact; then
+  restored=0
+  restore || exit 2
+  verdict "NOT PROVEN — the test command changed the fix files while it ran. They have been restored. Make the test leave the files it is testing alone, then run this again."
+  exit 1
+fi
 
 restore || exit 2
 
