@@ -520,8 +520,15 @@ assert_lib_load() {
 assert_lib_load 'lib-payload.sh missing'
 cp ./lib-payload.sh "$lib_stub/"
 chmod a-r "$lib_stub/lib-payload.sh"
-assert_lib_load 'lib-payload.sh unreadable'
-chmod u+r "$lib_stub/lib-payload.sh"
+# chmod a-r does not hide the file from UID 0; [ -r ] stays true and bash
+# sources it, so the guard blocks the force-push instead of the load. Skip
+# the permission case when the chmod did not take — keep missing unconditional.
+if [ -r "$lib_stub/lib-payload.sh" ]; then
+  echo "SKIP: lib-payload.sh unreadable case needs a non-root runner (chmod a-r is still readable to UID 0)"
+else
+  assert_lib_load 'lib-payload.sh unreadable'
+fi
+chmod u+r "$lib_stub/lib-payload.sh" 2>/dev/null || chmod a+r "$lib_stub/lib-payload.sh"
 rm -rf "$lib_stub"
 
 echo "== lint hook: non-lintable and missing paths are skipped =="
