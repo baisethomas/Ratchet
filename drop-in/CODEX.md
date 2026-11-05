@@ -1,5 +1,5 @@
 # CODEX.md — Codex Adapter
-<!-- ratchet-version: 1.3.0 -->
+<!-- ratchet-version: 1.3.1 -->
 
 <!--
 DROP-IN: place this file at the repo root when using Codex.

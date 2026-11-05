@@ -205,6 +205,58 @@ chmod +x tool.sh
 fix_file=tool.sh check "mode-only fix" 0 "RRR: PROVEN" --test "test -x tool.sh" -- tool.sh
 if [ -x tool.sh ]; then pass=$((pass + 1)); else fail=$((fail + 1)); echo "FAIL: executable bit was not restored"; fi
 
+# file_mode — permission bits as octal, st_mode & 0777. Same python fallback
+# test-upgrade.sh uses, so GNU/BSD stat differences do not hide a wrong restore.
+file_mode() {
+  python3 -c 'import os,sys; print("{:o}".format(os.stat(sys.argv[1]).st_mode & 0o777))' "$1"
+}
+
+echo "== restore brings back exact original modes (0600 and 0640) =="
+new_repo
+chmod 600 lib.sh
+out=$("$rrr" --test "bash good_test.sh" -- lib.sh 2>&1)
+code=$?
+got=$(file_mode lib.sh)
+if [ "$code" -eq 0 ] && printf '%s' "$out" | grep -q "RRR: PROVEN" && [ "$got" = "600" ]; then
+  pass=$((pass + 1))
+else
+  fail=$((fail + 1)); printf 'FAIL: 0600 restore — exit %s mode %s (want 600)\n%s\n' "$code" "$got" "$out"
+fi
+new_repo
+chmod 640 lib.sh
+out=$("$rrr" --test "bash good_test.sh" -- lib.sh 2>&1)
+code=$?
+got=$(file_mode lib.sh)
+if [ "$code" -eq 0 ] && printf '%s' "$out" | grep -q "RRR: PROVEN" && [ "$got" = "640" ]; then
+  pass=$((pass + 1))
+else
+  fail=$((fail + 1)); printf 'FAIL: 0640 restore — exit %s mode %s (want 640)\n%s\n' "$code" "$got" "$out"
+fi
+
+echo "== restore under umask 077 keeps 0755 (not 0700) =="
+new_repo
+chmod 755 lib.sh
+out=$(umask 077; "$rrr" --test "bash good_test.sh" -- lib.sh 2>&1)
+code=$?
+got=$(file_mode lib.sh)
+if [ "$code" -eq 0 ] && printf '%s' "$out" | grep -q "RRR: PROVEN" && [ "$got" = "755" ]; then
+  pass=$((pass + 1))
+else
+  fail=$((fail + 1)); printf 'FAIL: umask 077 0755 restore — exit %s mode %s (want 755)\n%s\n' "$code" "$got" "$out"
+fi
+
+echo "== a non-exec mode bit change is not intact =="
+# chmod 600 leaves the owner-exec bit off on a 0644 file, so an exec-only
+# fix_intact still reports PROVEN. Any permission-bit drift must be NOT PROVEN.
+new_repo
+cat >mode_drift.sh <<'DRIFT'
+n=$(cat runs 2>/dev/null || echo 0); n=$((n + 1)); echo $n >runs
+. ./lib.sh; [ "$(add 2 3)" = 5 ]; rc=$?
+[ $n -eq 1 ] && chmod 600 lib.sh
+exit $rc
+DRIFT
+check "phase 1 chmod 600 (non-exec drift)" 1 "changed the fix files" --test "bash mode_drift.sh" -- lib.sh
+
 echo "== setup errors exit 2 and touch nothing =="
 new_repo
 check "no test command" 2 "rrr.sh" -- lib.sh
