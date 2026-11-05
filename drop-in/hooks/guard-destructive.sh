@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# ratchet-version: 1.2.2
+# ratchet-version: 1.3.0
 # PreToolUse(Bash) guard: surface the hard stops in AGENTS.md so irreversible
 # commands stop and go to a human instead of running by momentum.
 #
@@ -116,6 +116,54 @@ block() {
 # macOS drains its input), so this avoids the pipeline entirely.
 has() { grep -qE "$1" <<<"$norm"; }
 has_i() { grep -qiE "$1" <<<"$norm"; }
+
+# --- Project-owned extra rules ------------------------------------------------
+# Additive blocked-command patterns from the project, not from Ratchet. Path is
+# always <project>/.ratchet/guard-destructive.rules so the hook finds it from
+# .claude/hooks, a plugin root (${CLAUDE_PLUGIN_ROOT}/hooks), or any other
+# copy: CLAUDE_PROJECT_DIR is the project, with git toplevel then cwd as
+# fallbacks. Missing or empty = defaults only. Present but unreadable,
+# not a regular file, unreadable after a successful open, or containing an
+# invalid POSIX ERE = cannot verify, so fail closed (exit 2), same class as
+# a missing lib-payload.sh. A bash `while read; do ...; done < file || deny`
+# is dead: the loop's status is the last body command, not the read, so a
+# mid-read I/O error would silently keep a partial set. Slurp with cat after
+# the -f/-r probe; if that read fails, deny. Then parse the blob. Normal EOF
+# (including no trailing newline), empty, and comment-only files still fall
+# back to defaults.
+project_dir="${CLAUDE_PROJECT_DIR:-}"
+if [ -z "$project_dir" ]; then
+  project_dir="$(git rev-parse --show-toplevel 2>/dev/null)" || project_dir="."
+fi
+rules_file="$project_dir/.ratchet/guard-destructive.rules"
+project_patterns=()
+deny_project_rules() {
+  echo "BLOCKED by guard hook: project rule file .ratchet/guard-destructive.rules is malformed or unreadable, so destructive commands cannot be checked." >&2
+  exit 2
+}
+if [ -e "$rules_file" ] || [ -L "$rules_file" ]; then
+  if [ ! -f "$rules_file" ] || [ ! -r "$rules_file" ]; then
+    deny_project_rules
+  fi
+  # The probe passed; now read the bytes. cat failing here is the observable
+  # "read failed after open" — bash 3.2 has no portable I/O-error vs EOF
+  # distinction on `read`, and `while …; done < file || deny` never fires.
+  rules_blob=$(cat -- "$rules_file") || deny_project_rules
+  while IFS= read -r line || [ -n "$line" ]; do
+    line="${line%$'\r'}"
+    trimmed="${line#"${line%%[![:space:]]*}"}"
+    trimmed="${trimmed%"${trimmed##*[![:space:]]}"}"
+    [ -z "$trimmed" ] && continue
+    case "$trimmed" in
+      \#*) continue ;;
+    esac
+    grep -qE -- "$trimmed" <<<"" 2>/dev/null
+    case $? in
+      0|1) project_patterns+=("$trimmed") ;;
+      *) deny_project_rules ;;
+    esac
+  done < <(printf '%s\n' "$rules_blob")
+fi
 
 # seg_has PAT... — true if ONE simple command matches every pattern given.
 # Flag rules must not look across control operators: `git branch --show-current
@@ -347,5 +395,16 @@ has "${CMD_POS}(scp|rsync|sftp)([[:space:]]|$)" && has "$REMOTE_SPEC" \
 # URL can ship the repository anywhere. URL form only, so `main:main` is fine.
 has "$(git_sub push)" && has "$REMOTE_URL" \
   && block "a push to an explicit remote URL"
+
+# Project patterns run after the defaults so a default match keeps its
+# message, and so they cannot disable a default. Unanchored ERE against the
+# same normalized text the defaults use (`npx drizzle-kit generate` matches
+# `drizzle-kit generate`).
+if [ "${#project_patterns[@]}" -gt 0 ]; then
+  for p in "${project_patterns[@]}"; do
+    # -- so a pattern that starts with - is an ERE, not a grep flag.
+    grep -qE -- "$p" <<<"$norm" && block "project rule '$p'"
+  done
+fi
 
 exit 0

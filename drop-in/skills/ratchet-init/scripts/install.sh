@@ -20,6 +20,9 @@
 # deleted, so running this twice is safe and the second run changes nothing.
 # It does not touch .claude/settings.json: merging the hooks block is a judgement
 # call and is left to the caller.
+# .ratchet/guard-destructive.rules is project-owned extra guard rules. It is not
+# a Ratchet template: even if a source ships a copy, put() refuses that path so
+# an existing file is kept and a missing one is not seeded.
 #
 # Exit: 0 = done (see the summary), 2 = usage or setup error.
 
@@ -116,6 +119,9 @@ blocked() {
 # put <source file> <destination relative to $to>
 put() {
   local dest="$to/$2"
+  if [ "$2" = ".ratchet/guard-destructive.rules" ]; then
+    printf 'SKIP  %s (project-owned)\n' "$2"; skipped=$((skipped + 1)); return 0
+  fi
   blocked "$2" && return 0
   mkdir -p "$(dirname "$dest")" && cp -p "$1" "$dest" || die "could not write $2"
   printf 'ADD   %s\n' "$2"; added=$((added + 1))
@@ -146,6 +152,10 @@ link() {
 put "$from/AGENTS.md" "AGENTS.md"
 put "$from/STATE.md" ".ratchet/STATE.md"
 put "$from/DECISIONS.md" ".ratchet/DECISIONS.md"
+# Opt-in project file: only considered so a source that ships a copy is SKIPPED.
+if [ -f "$from/.ratchet/guard-destructive.rules" ]; then
+  put "$from/.ratchet/guard-destructive.rules" ".ratchet/guard-destructive.rules"
+fi
 put_tree "$from/skills" ".agents/skills"
 
 if [ "$codex" -eq 1 ]; then

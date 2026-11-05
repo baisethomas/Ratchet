@@ -132,5 +132,35 @@ new_repo
 src="$sandbox/src.nohooks"; rm -rf "$src"; cp -R "$dropin" "$src"; rm -rf "$src/hooks" "$src/CLAUDE.md"
 "$install" --from "$src" --to "$repo" --codex >/dev/null 2>&1; [ $? -eq 0 ] && [ -f "$repo/CODEX.md" ] && ok || no "refused a source that only lacks files for an adapter that was not requested"
 
+echo "== existing project rule file is preserved on re-install =="
+# .ratchet/guard-destructive.rules is project-owned. Re-install must keep it
+# byte-for-byte, and a fresh install must not seed one even if the source
+# ships a copy.
+EXAMPLE_PROJECT_RULES='# Extra blocked commands for this project. Combined with Ratchet defaults.
+# Blank lines and comments are ignored. Each remaining line is an unanchored POSIX ERE
+# matched against the same normalized command text the default rules use.
+npm run db:push
+drizzle-kit generate
+'
+new_repo
+"$install" --from "$dropin" --to "$repo" --claude >/dev/null 2>&1
+[ ! -e "$repo/.ratchet/guard-destructive.rules" ] && ok || no "fresh install seeded .ratchet/guard-destructive.rules; the file is opt-in"
+mkdir -p "$repo/.ratchet"
+printf '%s' "$EXAMPLE_PROJECT_RULES" > "$repo/.ratchet/guard-destructive.rules"
+rules_before="$(cksum < "$repo/.ratchet/guard-destructive.rules")"
+out="$("$install" --from "$dropin" --to "$repo" --claude --codex 2>&1)"; code=$?
+[ "$code" -eq 0 ] && [ "$(cksum < "$repo/.ratchet/guard-destructive.rules")" = "$rules_before" ] && ok || no "re-install changed .ratchet/guard-destructive.rules (exit $code)"
+# Source grows a template with different bytes: dest still keeps the project copy,
+# and a repo without the file still does not receive the template.
+src="$sandbox/src.with-rules-template"; rm -rf "$src"; cp -R "$dropin" "$src"
+mkdir -p "$src/.ratchet"
+printf '%s\n' 'THIS MUST NOT LAND' > "$src/.ratchet/guard-destructive.rules"
+out="$("$install" --from "$src" --to "$repo" --claude 2>&1)"; code=$?
+[ "$code" -eq 0 ] && [ "$(cksum < "$repo/.ratchet/guard-destructive.rules")" = "$rules_before" ] && ok || no "install from a source that ships a rule template overwrote the project file"
+grep -q 'THIS MUST NOT LAND' "$repo/.ratchet/guard-destructive.rules" && no "install wrote the source template over the project rule file" || ok
+new_repo
+"$install" --from "$src" --to "$repo" --claude >/dev/null 2>&1
+[ ! -e "$repo/.ratchet/guard-destructive.rules" ] && ok || no "install seeded .ratchet/guard-destructive.rules from a source template; the file is opt-in"
+
 printf '\n%s passed, %s failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

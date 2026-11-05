@@ -26,7 +26,7 @@ The script does the mechanical part: it compares every installed file with the n
 
 It writes nothing in the repo. Read the `INFO base:` line first: without a base there is no merge, only a diff. The base comes from the source checkout's history by version; if the source is not a git checkout, or the owner installed from a specific commit, pass `--base <drop-in at that version>`.
 
-Then read each status line. `SAME`, `MEMORY`, `ABSENT`, and `SKIP` need nothing. `NEW` is a file the release added (a new skill, a new script). `MERGE` has a clean proposal in the staging directory. `CONFLICT` has a proposal with markers. `NOBASE` has no proposal.
+Then read each status line. `SAME` means bytes and permission bits (`st_mode & 0777`) both match the new release (`test -x` is not the comparison: 0755 and 0711 are both owner-executable). Setuid/setgid/sticky are ignored. `MEMORY`, `ABSENT`, and `SKIP` need nothing. `NEW` is a file the release added (a new skill, a new script). `MERGE` has a clean proposal in the staging directory, including a bytes-identical file whose mode drifted (`mode differs`). `CONFLICT` has a proposal with markers. `NOBASE` has no proposal. Apply restores the upstream nine-bit mode, not only the owner-exec bit, and never copies special bits.
 
 **Done when:** every file has a status and you know which ones carry a proposal.
 
@@ -35,7 +35,7 @@ Then read each status line. `SAME`, `MEMORY`, `ABSENT`, and `SKIP` need nothing.
 - For each `MERGE`: `diff -u <repo>/<path> <stage>/<path>`. Check that every slot the owner filled (the check command, the high-risk modules, `CHECKS` in the stop hook, the model table) survived unchanged, and that the new release's sections are present. If a filled slot came back as `FILL-ME`, the base was wrong: stop and find the right one rather than apply.
 - For each `CONFLICT`: open the staged proposal, resolve the markers by hand with the owner's edits kept and the release's change applied, and show the result as a diff. Never apply a file that still contains conflict markers.
 - For each `NOBASE`: show `diff -u` and merge by hand, or find a base and re-run.
-- `.ratchet/STATE.md` and `.ratchet/DECISIONS.md` are never touched; they are live memory, not templates.
+- `.ratchet/STATE.md` and `.ratchet/DECISIONS.md` are never touched; they are live memory, not templates. `.ratchet/guard-destructive.rules` is the same class: project-owned extra guard rules, never written.
 - Rewording `AGENTS.md` is orchestrator-tier work under the contract: the owner sees that diff before it lands, every time.
 
 **Done when:** the owner has said yes to a named list of paths.

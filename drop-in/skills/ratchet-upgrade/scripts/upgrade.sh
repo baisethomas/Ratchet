@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# ratchet-version: 1.2.2
+# ratchet-version: 1.3.0
 # Upgrade Ratchet's per-repo drop-ins to a newer release without losing the owner's edits.
 #
 #   upgrade.sh --to <repo root> [--from <ratchet>/drop-in] [--base <drop-in at the installed version>]
@@ -17,7 +17,7 @@
 #   MERGE     the owner's edits replay cleanly onto the new release (proposal staged)
 #   CONFLICT  the owner and the release changed the same lines (proposal with markers)
 #   NOBASE    changed, but no base to merge against; diff only (pass --base)
-#   MEMORY    .ratchet/STATE.md or DECISIONS.md: live project memory, never written
+#   MEMORY    .ratchet/STATE.md, DECISIONS.md, or guard-destructive.rules: project-owned, never written
 #   NEW       in the release, not in the repo, inside an installed tree (apply copies it)
 #   ABSENT    not installed at all; install.sh is the tool for that, not this one
 #   SKIP      the destination is a symlink or sits under one; never written through
@@ -172,19 +172,48 @@ refused=0
 applied=0
 requested=0
 
-# same_exec <a> <b> — both executable, or neither.
-same_exec() {
-  local a=0 b=0
-  [ -x "$1" ] && a=1
-  [ -x "$2" ] && b=1
-  [ "$a" -eq "$b" ]
+# file_mode <path> — permission bits as octal with no leading zero (755, 644).
+# GNU stat -c %a, BSD/macOS stat -f %OLp, python3 as a last resort. Comparison
+# and restore use st_mode & 0777, not test -x: 0755 and 0711 are both executable
+# for the owner, and 0644 and 0600 are both not, so an owner-exec check hides
+# group/other drift and mktemp-then-chmod-+x landing on 0711. Setuid/setgid/sticky
+# are stripped so apply never copies them; GNU %a can return 4755.
+file_mode() {
+  local m
+  # GNU first, then BSD/macOS. macOS `stat -c` is a different flag and can succeed
+  # with a non-mode string, so only accept 3–4 octal digits before using the value.
+  m=$(stat -c '%a' "$1" 2>/dev/null || true)
+  case "$m" in
+    [0-7][0-7][0-7]|[0-7][0-7][0-7][0-7]) ;;
+    *)
+      m=$(stat -f '%OLp' "$1" 2>/dev/null || true)
+      case "$m" in
+        [0-7][0-7][0-7]|[0-7][0-7][0-7][0-7]) ;;
+        *)
+          m=$(python3 -c 'import os,sys; print("{:o}".format(os.stat(sys.argv[1]).st_mode & 0o777))' "$1" 2>/dev/null) || return 1
+          ;;
+      esac
+      ;;
+  esac
+  printf '%o' "$((8#$m & 8#777))"
+}
+
+# same_mode <a> <b> — the permission bits match. Unreadable mode is not "same".
+same_mode() {
+  local a b
+  a=$(file_mode "$1") || return 1
+  b=$(file_mode "$2") || return 1
+  [ "$a" = "$b" ]
 }
 
 # write_file <content source> <destination relative to $to> [<mode source>]
 # The one place anything is written. Content comes from arg 1 (the proposal, or
-# the new file). The executable bit comes from arg 3, defaulting to arg 1 — the
-# upstream template, never the destination. Keeping dest's mode made a mode-only
-# release look like SAME and left merges on the old bit.
+# the new file). Permission bits come from arg 3, defaulting to arg 1 — the
+# upstream template, never the destination. mktemp creates 0600; chmod +x on
+# that becomes 0711 and chmod -x stays 0600, so the bits are copied as an
+# explicit octal mode (portable: no --reference, no GNU-only stat -c without
+# a BSD fallback). Keeping dest's mode made a mode-only release look like SAME
+# and left merges on the old bits.
 # A temp file beside the destination, then one rename: a reader never sees a half-written
 # file, and rename does not follow a symlink that appeared at the destination meanwhile.
 # The symlink check runs again here, right before the temp file is made and again right
@@ -195,12 +224,17 @@ same_exec() {
 # the working tree, which could edit these files directly; it is the same exposure
 # install.sh and git checkout have, and it is stated here rather than papered over.
 write_file() {
-  local src="$1" rel="$2" mode_src="${3:-$1}" dest="$to/$2" tmp
+  local src="$1" rel="$2" mode_src="${3:-$1}" dest="$to/$2" tmp mode
+  # Belt: even if a future classifier calls this for the project rule file, do not write it.
+  if [ "$rel" = ".ratchet/guard-destructive.rules" ]; then
+    printf 'REFUSE    %s (project-owned)\n' "$rel"; refused=$((refused + 1)); return 1
+  fi
   if [ -L "$dest" ] || linked_parent "$rel"; then printf 'REFUSE    %s (became a symlink)\n' "$rel"; refused=$((refused + 1)); return 1; fi
   mkdir -p "$(dirname "$dest")" || { printf 'REFUSE    %s (cannot create its directory)\n' "$rel"; refused=$((refused + 1)); return 1; }
   tmp="$(mktemp "$(dirname "$dest")/.ratchet-upgrade.XXXXXX")" || { printf 'REFUSE    %s (cannot stage a write)\n' "$rel"; refused=$((refused + 1)); return 1; }
   cp "$src" "$tmp" || { rm -f "$tmp"; printf 'REFUSE    %s (copy failed)\n' "$rel"; refused=$((refused + 1)); return 1; }
-  if [ -x "$mode_src" ]; then chmod +x "$tmp"; else chmod -x "$tmp"; fi
+  mode=$(file_mode "$mode_src") || { rm -f "$tmp"; printf 'REFUSE    %s (cannot read upstream mode)\n' "$rel"; refused=$((refused + 1)); return 1; }
+  chmod "$mode" "$tmp" || { rm -f "$tmp"; printf 'REFUSE    %s (chmod failed)\n' "$rel"; refused=$((refused + 1)); return 1; }
   if [ -L "$dest" ] || linked_parent "$rel"; then rm -f "$tmp"; printf 'REFUSE    %s (became a symlink)\n' "$rel"; refused=$((refused + 1)); return 1; fi
   mv -f "$tmp" "$dest" || { rm -f "$tmp"; printf 'REFUSE    %s (move failed)\n' "$rel"; refused=$((refused + 1)); return 1; }
   return 0
@@ -219,22 +253,22 @@ consider() {
     fi
   elif [ "$kind" = "memory" ]; then
     status="MEMORY"; printf 'MEMORY    %s (live project memory, never written)\n' "$rel"
-  elif cmp -s "$src" "$dest" && same_exec "$src" "$dest"; then
+  elif cmp -s "$src" "$dest" && same_mode "$src" "$dest"; then
     status="SAME"; printf 'SAME      %s\n' "$rel"
   elif cmp -s "$src" "$dest"; then
-    # Bytes match, mode does not. No merge is needed; apply copies the upstream bit.
+    # Bytes match, mode does not. No merge is needed; apply copies the upstream bits.
     proposal="$stage/$rel"; mkdir -p "$(dirname "$proposal")"
     cp "$src" "$proposal"
-    status="MERGE"; printf 'MERGE     %s (executable bit differs; proposal staged)\n' "$rel"
+    status="MERGE"; printf 'MERGE     %s (mode differs; proposal staged)\n' "$rel"
   elif [ -n "$base" ] && [ -f "$base/${src#"$from"/}" ]; then
     proposal="$stage/$rel"; mkdir -p "$(dirname "$proposal")"
     git merge-file -p -L "installed" -L "ratchet ${installed_version:-base}" -L "ratchet $new_version" \
       "$dest" "$base/${src#"$from"/}" "$src" > "$proposal" 2>/dev/null
     n=$?
-    if [ "$n" -eq 0 ] && cmp -s "$proposal" "$dest" && same_exec "$src" "$dest"; then
+    if [ "$n" -eq 0 ] && cmp -s "$proposal" "$dest" && same_mode "$src" "$dest"; then
       status="CURRENT"; printf 'CURRENT   %s (installed edits are already on this release)\n' "$rel"
     elif [ "$n" -eq 0 ] && cmp -s "$proposal" "$dest"; then
-      status="MERGE"; printf 'MERGE     %s (executable bit differs; proposal staged)\n' "$rel"
+      status="MERGE"; printf 'MERGE     %s (mode differs; proposal staged)\n' "$rel"
     elif [ "$n" -eq 0 ]; then
       status="MERGE"; printf 'MERGE     %s (%s hunks; proposal staged)\n' "$rel" "$(diff -u "$dest" "$proposal" | grep -c '^@@')"
     elif [ "$n" -ge 128 ]; then
@@ -277,6 +311,12 @@ consider "$from/CLAUDE.md" "CLAUDE.md" core
 consider "$from/CODEX.md" "CODEX.md" core
 consider "$from/STATE.md" ".ratchet/STATE.md" memory
 consider "$from/DECISIONS.md" ".ratchet/DECISIONS.md" memory
+# Project-owned extra guard rules. Not a Ratchet template: classified only when
+# the dest file already exists, so repos without extra rules are not an ABSENT
+# line, and a copy in the source (now or later) is never merged or created.
+if [ -e "$to/.ratchet/guard-destructive.rules" ] || [ -L "$to/.ratchet/guard-destructive.rules" ]; then
+  consider "$from/.ratchet/guard-destructive.rules" ".ratchet/guard-destructive.rules" memory
+fi
 for dir in hooks:.claude/hooks skills:.agents/skills; do
   srcdir="$from/${dir%%:*}"; destdir="${dir#*:}"
   [ -d "$srcdir" ] || continue

@@ -27,6 +27,25 @@ export TMPDIR="$sandbox"   # staging directories land here and go with the sandb
 
 ok() { pass=$((pass + 1)); }
 no() { fail=$((fail + 1)); printf 'FAIL: %s\n' "$1"; }
+# mode_of <file> — permission bits as octal without a leading zero (755, 644).
+# GNU stat -c %a, BSD stat -f %OLp, python3 last.
+mode_of() {
+  local m
+  m=$(stat -c '%a' "$1" 2>/dev/null || true)
+  case "$m" in
+    [0-7][0-7][0-7]|[0-7][0-7][0-7][0-7]) ;;
+    *)
+      m=$(stat -f '%OLp' "$1" 2>/dev/null || true)
+      case "$m" in
+        [0-7][0-7][0-7]|[0-7][0-7][0-7][0-7]) ;;
+        *)
+          m=$(python3 -c 'import os,sys; print("{:o}".format(os.stat(sys.argv[1]).st_mode & 0o777))' "$1") || return 1
+          ;;
+      esac
+      ;;
+  esac
+  printf '%o' "$((8#$m))"
+}
 snapshot() {
   (cd "$1" && find . -path ./.git -prune -o \( -type f -o -type l \) -print | sort | while IFS= read -r f; do
     if [ -L "$f" ]; then printf 'L %s -> %s\n' "$f" "$(readlink "$f")"
@@ -198,6 +217,89 @@ out="$("$upgrade" --from "$dropin" --to "$repo" --base "$dropin" --apply "$hook"
 [ -x "$repo/$hook" ] && ok || no "apply did not restore the upstream executable bit"
 cmp -s "$dropin/hooks/guard-destructive.sh" "$repo/$hook" && ok || no "apply changed the hook's bytes"
 
+echo "== apply restores the upstream permission bits exactly (755 and 644) =="
+# mktemp stages at 0600; chmod +x on that becomes 0711, chmod -x stays 0600.
+# Apply must copy the upstream bits, not just the owner-exec bit.
+new_repo
+"$install" --from "$dropin" --to "$repo" --claude >/dev/null 2>&1
+hook=".claude/hooks/guard-destructive.sh"
+doc="AGENTS.md"
+[ "$(mode_of "$dropin/hooks/guard-destructive.sh")" = 755 ] && ok || no "fixture: upstream hook should be 755, got $(mode_of "$dropin/hooks/guard-destructive.sh")"
+[ "$(mode_of "$dropin/AGENTS.md")" = 644 ] && ok || no "fixture: upstream AGENTS.md should be 644, got $(mode_of "$dropin/AGENTS.md")"
+chmod 711 "$repo/$hook"
+chmod 600 "$repo/$doc"
+out="$("$upgrade" --from "$dropin" --to "$repo" --base "$dropin" --apply "$hook" --apply "$doc" 2>&1)"; code=$?
+[ "$code" -eq 0 ] && ok || no "exact-mode apply exited $code: $out"
+[ "$(mode_of "$repo/$hook")" = 755 ] && ok || no "applied hook mode should be 755, got $(mode_of "$repo/$hook")"
+[ "$(mode_of "$repo/$doc")" = 644 ] && ok || no "applied AGENTS.md mode should be 644, got $(mode_of "$repo/$doc")"
+
+echo "== group/other mode drift is MERGE in report, not SAME =="
+# test -x is true for both 0755 and 0711 (owner can execute), and false for
+# both 0644 and 0600. Comparison must use the full permission bits.
+new_repo
+"$install" --from "$dropin" --to "$repo" --claude >/dev/null 2>&1
+hook=".claude/hooks/guard-destructive.sh"
+doc="AGENTS.md"
+chmod 711 "$repo/$hook"
+chmod 600 "$repo/$doc"
+cmp -s "$dropin/hooks/guard-destructive.sh" "$repo/$hook" && ok || no "fixture: 711 chmod must not change hook bytes"
+cmp -s "$dropin/AGENTS.md" "$repo/$doc" && ok || no "fixture: 600 chmod must not change AGENTS.md bytes"
+out="$("$upgrade" --from "$dropin" --to "$repo" --base "$dropin" 2>&1)"; code=$?
+[ "$code" -eq 0 ] && ok || no "mode-drift report exited $code"
+[ "$(status_of "$out" "$hook")" = MERGE ] && ok || no "0711 vs 0755 should be MERGE, got: $(status_of "$out" "$hook")"
+[ "$(status_of "$out" "$doc")" = MERGE ] && ok || no "0600 vs 0644 should be MERGE, got: $(status_of "$out" "$doc")"
+printf '%s' "$out" | grep -E "MERGE +$hook" | grep -q 'mode differs' && ok || no "hook MERGE line should say mode differs"
+printf '%s' "$out" | grep -E "MERGE +$doc" | grep -q 'mode differs' && ok || no "AGENTS.md MERGE line should say mode differs"
+[ "$(mode_of "$repo/$hook")" = 711 ] && ok || no "report mode must not rewrite the 711 hook, got $(mode_of "$repo/$hook")"
+[ "$(mode_of "$repo/$doc")" = 600 ] && ok || no "report mode must not rewrite the 600 AGENTS.md, got $(mode_of "$repo/$doc")"
+out="$("$upgrade" --from "$dropin" --to "$repo" --base "$dropin" --apply "$hook" --apply "$doc" 2>&1)"; code=$?
+[ "$code" -eq 0 ] && ok || no "mode-drift apply exited $code: $out"
+[ "$(mode_of "$repo/$hook")" = 755 ] && ok || no "apply should restore hook to 755, got $(mode_of "$repo/$hook")"
+[ "$(mode_of "$repo/$doc")" = 644 ] && ok || no "apply should restore AGENTS.md to 644, got $(mode_of "$repo/$doc")"
+
+echo "== apply strips setuid/setgid/sticky; comparison uses 0777 =="
+# GNU stat -c %a can return 4755. Comparison and restore are st_mode & 0777,
+# so a setuid upstream must not land as 4755 and must not look different from 0755.
+new_repo
+"$install" --from "$dropin" --to "$repo" --claude >/dev/null 2>&1
+hook=".claude/hooks/guard-destructive.sh"
+doc="AGENTS.md"
+src="$sandbox/from.setuid"
+rm -rf "$src"
+cp -R "$dropin" "$src"
+chmod 4755 "$src/hooks/guard-destructive.sh"
+chmod 1644 "$src/AGENTS.md"
+[ "$(mode_of "$src/hooks/guard-destructive.sh")" = 4755 ] && ok || no "fixture: setuid source hook should be 4755, got $(mode_of "$src/hooks/guard-destructive.sh")"
+[ "$(mode_of "$src/AGENTS.md")" = 1644 ] && ok || no "fixture: sticky source AGENTS.md should be 1644, got $(mode_of "$src/AGENTS.md")"
+out="$("$upgrade" --from "$src" --to "$repo" --base "$src" 2>&1)"; code=$?
+[ "$code" -eq 0 ] && ok || no "setuid SAME report exited $code"
+[ "$(status_of "$out" "$hook")" = SAME ] && ok || no "4755 vs 755 should be SAME after 0777 mask, got: $(status_of "$out" "$hook")"
+[ "$(status_of "$out" "$doc")" = SAME ] && ok || no "1644 vs 644 should be SAME after 0777 mask, got: $(status_of "$out" "$doc")"
+chmod 711 "$repo/$hook"
+chmod 600 "$repo/$doc"
+out="$("$upgrade" --from "$src" --to "$repo" --base "$src" --apply "$hook" --apply "$doc" 2>&1)"; code=$?
+[ "$code" -eq 0 ] && ok || no "setuid apply exited $code: $out"
+[ "$(mode_of "$repo/$hook")" = 755 ] && ok || no "apply of 4755 source must land 755, got $(mode_of "$repo/$hook")"
+[ "$(mode_of "$repo/$doc")" = 644 ] && ok || no "apply of 1644 source must land 644, got $(mode_of "$repo/$doc")"
+
+echo "== a bytes-differ content MERGE restores upstream modes (755 and 644) =="
+# Owner-edited bytes, clean three-way merge. Mode must come from upstream
+# ($src), not from the merge-file redirect (umask 0644) or the dest.
+new_repo; install_old_and_fill
+hook=".claude/hooks/check-on-stop.sh"
+doc="AGENTS.md"
+chmod 711 "$repo/$hook"
+chmod 600 "$repo/$doc"
+out="$("$upgrade" --from "$dropin" --to "$repo" --base "$old" 2>&1)"; code=$?
+[ "$code" -eq 0 ] && [ "$(status_of "$out" "$hook")" = MERGE ] && ok || no "content-edited hook should be MERGE, got: $(status_of "$out" "$hook") (exit $code)"
+[ "$(status_of "$out" "$doc")" = MERGE ] && ok || no "content-edited AGENTS.md should be MERGE, got: $(status_of "$out" "$doc")"
+out="$("$upgrade" --from "$dropin" --to "$repo" --base "$old" --apply "$hook" --apply "$doc" 2>&1)"; code=$?
+[ "$code" -eq 0 ] && ok || no "content MERGE apply exited $code: $out"
+[ "$(mode_of "$repo/$hook")" = 755 ] && ok || no "content MERGE hook mode should be 755, got $(mode_of "$repo/$hook")"
+[ "$(mode_of "$repo/$doc")" = 644 ] && ok || no "content MERGE AGENTS.md mode should be 644, got $(mode_of "$repo/$doc")"
+grep -q 'CHECKS=("make verify")' "$repo/$hook" && ok || no "content MERGE lost the filled CHECKS line"
+grep -q 'npm test' "$repo/$doc" && ok || no "content MERGE lost the filled check command"
+
 echo "== setup errors exit 2 =="
 new_repo
 "$upgrade" --from "$dropin" >/dev/null 2>&1; [ $? -eq 2 ] && ok || no "missing --to should be a usage error"
@@ -232,6 +334,35 @@ if [ -n "$old_commit" ]; then
 else
   echo "SKIP: no 1.0.0 release in this checkout's history; the real-history case was not run"
 fi
+
+echo "== project rule file is left byte-for-byte unchanged by report and apply-all =="
+# .ratchet/guard-destructive.rules is project-owned. Upgrade must not merge,
+# replace, or create it — even when the new release's drop-in happens to ship
+# a copy with different bytes.
+new_repo; install_old_and_fill
+mkdir -p "$repo/.ratchet"
+printf '%s' '# Extra blocked commands for this project. Combined with Ratchet defaults.
+# Blank lines and comments are ignored. Each remaining line is an unanchored POSIX ERE
+# matched against the same normalized command text the default rules use.
+npm run db:push
+drizzle-kit generate
+' > "$repo/.ratchet/guard-destructive.rules"
+rules_before="$(cksum < "$repo/.ratchet/guard-destructive.rules")"
+from_with_template="$sandbox/from-with-rules-template"
+rm -rf "$from_with_template"
+cp -R "$dropin" "$from_with_template"
+mkdir -p "$from_with_template/.ratchet"
+printf '%s\n' 'THIS MUST NOT LAND' > "$from_with_template/.ratchet/guard-destructive.rules"
+out="$("$upgrade" --from "$from_with_template" --to "$repo" --base "$old" 2>&1)"; code=$?
+[ "$code" -eq 0 ] && ok || no "report with a project rule file exited $code: $out"
+[ "$(cksum < "$repo/.ratchet/guard-destructive.rules")" = "$rules_before" ] && ok || no "report mode changed .ratchet/guard-destructive.rules"
+[ "$(status_of "$out" .ratchet/guard-destructive.rules)" = MEMORY ] && ok || no "project rule file should be MEMORY, got: $(status_of "$out" .ratchet/guard-destructive.rules)"
+out="$("$upgrade" --from "$from_with_template" --to "$repo" --base "$old" --apply-all 2>&1)"; code=$?
+[ "$code" -eq 0 ] && ok || no "apply-all with a project rule file exited $code: $out"
+[ "$(cksum < "$repo/.ratchet/guard-destructive.rules")" = "$rules_before" ] && ok || no "apply-all changed .ratchet/guard-destructive.rules"
+grep -q 'THIS MUST NOT LAND' "$repo/.ratchet/guard-destructive.rules" && no "apply-all wrote the source template over the project rule file" || ok
+printf '%s' "$out" | grep -q '^UPGRADED  .ratchet/guard-destructive.rules' && no "apply-all reported UPGRADED for the project rule file" || ok
+printf '%s' "$out" | grep -q '^ADDED     .ratchet/guard-destructive.rules' && no "apply-all reported ADDED for the project rule file" || ok
 
 printf '\n%s passed, %s failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
