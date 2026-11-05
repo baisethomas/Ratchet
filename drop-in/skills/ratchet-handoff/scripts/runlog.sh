@@ -19,14 +19,17 @@
 #     supersedes it.
 #   - one line per row: tabs, newlines and carriage returns inside a cell are
 #     replaced with spaces.
-#   - a cell that starts with = + - @ or a double quote is prefixed with a
-#     single quote. The log is meant to be opened in a spreadsheet, and
-#     evidence cells can carry text an agent did not write (PR titles, file
-#     names, tool output); none of it may become a formula when the reviewer
-#     opens the file. The double quote is included because a TSV importer
-#     strips enclosing quotes before it looks at the cell, so "=1+1" would
-#     decode to =1+1 and run; with the prefix the cell no longer starts with
-#     a quote, so the importer leaves it alone and the sheet reads it as text.
+#   - a cell whose first non-space character is = + - @ or a double quote is
+#     prefixed with a single quote. Tabs and CR are already turned into spaces,
+#     so a tab or CR before =cmd still matches after flattening. The log is meant
+#     to be opened in a spreadsheet, and evidence cells can carry text an agent
+#     did not write (PR titles, file names, tool output); none of it may become
+#     a formula when the reviewer opens the file. A sheet that trims leading
+#     whitespace before parsing would otherwise run the formula. The double
+#     quote is included because a TSV importer strips enclosing quotes before
+#     it looks at the cell, so "=1+1" would decode to =1+1 and run; with the
+#     prefix the cell no longer starts with a quote, so the importer leaves it
+#     alone and the sheet reads it as text.
 #
 # Rewritten from pstack's show-me-your-work/scripts/log.sh (MIT, Lauren Tan),
 # keeping its formula-injection scrub. See ../../CREDITS.md.
@@ -117,9 +120,12 @@ if [ ! -s "$logfile" ]; then
 fi
 
 clean() {
-  local v
+  local v stripped
   v=$(printf '%s' "$1" | tr '\t\n\r' '   ')
-  case "$v" in
+  # First non-space character, not the first byte: leading spaces (including
+  # tabs and CR already flattened above) must not bypass the formula prefix.
+  stripped="${v#"${v%%[! ]*}"}"
+  case "$stripped" in
     =*|+*|-*|@*|\"*) printf "'%s" "$v" ;;
     *) printf '%s' "$v" ;;
   esac

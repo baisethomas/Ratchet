@@ -14,6 +14,9 @@
 # FIX_FILEs must be regular files inside this repository: absolute paths, paths that
 # resolve outside the repo, symlinks, and directories are refused before anything runs.
 # Both content and the executable bit are reverted, so a chmod-only fix can be proven.
+# Restore copies the original permission bits (st_mode & 0777), not only the
+# executable bit: cat-then-chmod-+x/-x follows umask (0600 comes back 0644
+# under umask 022; 0755 comes back 0700 under umask 077).
 # Containment is re-checked at every write, and the script never writes through an
 # existing path, so a test that swaps a fix file or its directory for a symlink cannot
 # redirect a write outside the repo. This guards against accidents, not against a
@@ -72,6 +75,39 @@ inside_worktree() {
   case "$dir/" in "$root/"*) return 0 ;; *) return 1 ;; esac
 }
 
+# file_mode <path> — permission bits as octal with no leading zero (755, 644).
+# GNU stat -c %a, BSD/macOS stat -f %OLp, python3 as a last resort. Restore and
+# fix_intact use st_mode & 0777, not test -x: 0644 and 0600 are both not
+# owner-executable, and chmod +x after cat follows umask (0711 / 0700).
+# Setuid/setgid/sticky are stripped; GNU %a can return 4755.
+file_mode() {
+  local m
+  # GNU first, then BSD/macOS. macOS `stat -c` is a different flag and can succeed
+  # with a non-mode string, so only accept 3–4 octal digits before using the value.
+  m=$(stat -c '%a' "$1" 2>/dev/null || true)
+  case "$m" in
+    [0-7][0-7][0-7]|[0-7][0-7][0-7][0-7]) ;;
+    *)
+      m=$(stat -f '%OLp' "$1" 2>/dev/null || true)
+      case "$m" in
+        [0-7][0-7][0-7]|[0-7][0-7][0-7][0-7]) ;;
+        *)
+          m=$(python3 -c 'import os,sys; print("{:o}".format(os.stat(sys.argv[1]).st_mode & 0o777))' "$1" 2>/dev/null) || return 1
+          ;;
+      esac
+      ;;
+  esac
+  printf '%o' "$((8#$m & 8#777))"
+}
+
+# same_mode <a> <b> — the permission bits match. Unreadable mode is not "same".
+same_mode() {
+  local a b
+  a=$(file_mode "$1") || return 1
+  b=$(file_mode "$2") || return 1
+  [ "$a" = "$b" ]
+}
+
 # place <source> <path> — write <source>'s bytes to <path> as a fresh regular file.
 # The test command runs between our checks and our writes and may have replaced a fix
 # file or one of its parent directories with a symlink, so: re-check containment at the
@@ -119,7 +155,7 @@ existed=()
 # otherwise the backup directory is kept and its location printed.
 restore() {
   [ "$restored" -eq 1 ] && return 0
-  local i=0 p ok=1
+  local i=0 p ok=1 mode
   for p in "${paths[@]}"; do
     if [ "${existed[$i]}" -eq 0 ]; then
       unplace "$p" || ok=0
@@ -127,7 +163,10 @@ restore() {
       # The test may have deleted the file's directory (place recreates it) or moved
       # the path outside the repo (place refuses, and the backup is kept).
       if place "$backup/$i" "$p" && cmp -s "$backup/$i" "$p"; then
-        if [ -x "$backup/$i" ]; then chmod +x "$p"; else chmod -x "$p"; fi
+        if ! mode=$(file_mode "$backup/$i") || ! chmod "$mode" "$p" || ! same_mode "$backup/$i" "$p"; then
+          printf 'rrr: could not restore the original mode of %s\n' "$p" >&2
+          ok=0
+        fi
       else
         printf 'rrr: could not safely restore %s (its location now resolves outside the repo, or is a directory)\n' "$p" >&2
         ok=0
@@ -149,8 +188,8 @@ restore() {
 }
 
 # fix_intact — every listed path is exactly as it was when we started: same bytes, same
-# executable bit, still absent if it was absent. Paths whose backup is gone are skipped;
-# restore reports those.
+# permission bits (st_mode & 0777), still absent if it was absent. Paths whose backup
+# is gone are skipped; restore reports those. An exec-only check hid 0644→0600 drift.
 fix_intact() {
   local i=0 p
   for p in "${paths[@]}"; do
@@ -158,7 +197,7 @@ fix_intact() {
       { [ -e "$p" ] || [ -L "$p" ]; } && return 1
     elif [ -f "$backup/$i" ]; then
       [ -f "$p" ] && [ ! -L "$p" ] && cmp -s "$backup/$i" "$p" || return 1
-      if [ -x "$backup/$i" ]; then [ -x "$p" ] || return 1; else [ -x "$p" ] && return 1; fi
+      same_mode "$backup/$i" "$p" || return 1
     fi
     i=$((i + 1))
   done
