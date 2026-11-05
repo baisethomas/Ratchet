@@ -57,6 +57,25 @@ else
   echo "SKIP: python3 not installed; decoded-cell check not run"
 fi
 
+echo "== leading spaces, tabs and CR before = + - @ \" are still formula-scrubbed =="
+# The first-byte check missed these: tr turns tab and CR into a space, then a
+# sheet that trims before parsing still sees a formula. Prefix the flattened
+# value (space + formula char) so the stored cell cannot decode to a formula.
+n=0
+for prefix in ' ' $'\t' $'\r'; do
+  for char in '=' '+' '-' '@' '"'; do
+    n=$((n + 1))
+    val="${prefix}${char}payload${n}"
+    "$log" "$f" "p${n}" "$val" "why${n}" "ev${n}" "open" || no "append of leading-ws formula $n exited non-zero"
+    cell=$(tail -1 "$f" | cut -f3)
+    expected="' ${char}payload${n}"
+    [ "$cell" = "$expected" ] && ok || no "leading $(printf %q "$prefix") before $char not scrubbed: got $(printf %q "$cell")"
+  done
+done
+# A leading space in front of ordinary text is not a formula and must stay unprefixed.
+"$log" "$f" phase " not a formula" why evidence open
+[ "$(tail -1 "$f" | cut -f3)" = " not a formula" ] && ok || no "a leading space on a non-formula cell was altered"
+
 echo "== wrong argument count exits 2 and writes nothing =="
 before=$(wc -l < "$f")
 "$log" "$f" only two 2>/dev/null; [ $? -eq 2 ] && ok || no "too few arguments should exit 2"
