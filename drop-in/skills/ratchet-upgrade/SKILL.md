@@ -35,7 +35,7 @@ Then read each status line. `SAME`, `MEMORY`, `ABSENT`, and `SKIP` need nothing.
 - For each `MERGE`: `diff -u <repo>/<path> <stage>/<path>`. Check that every slot the owner filled (the check command, the high-risk modules, `CHECKS` in the stop hook, the model table) survived unchanged, and that the new release's sections are present. If a filled slot came back as `FILL-ME`, the base was wrong: stop and find the right one rather than apply.
 - For each `CONFLICT`: open the staged proposal, resolve the markers by hand with the owner's edits kept and the release's change applied, and show the result as a diff. Never apply a file that still contains conflict markers.
 - For each `NOBASE`: show `diff -u` and merge by hand, or find a base and re-run.
-- `.ratchet/STATE.md` and `.ratchet/DECISIONS.md` are never touched; they are live memory, not templates.
+- `.ratchet/STATE.md` and `.ratchet/DECISIONS.md` are never touched; they are live memory, not templates. `.ratchet/guard-destructive.rules` is the same class: project-owned extra guard rules, never written.
 - Rewording `AGENTS.md` is orchestrator-tier work under the contract: the owner sees that diff before it lands, every time.
 
 **Done when:** the owner has said yes to a named list of paths.

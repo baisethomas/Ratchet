@@ -692,6 +692,138 @@ assert_guard 2 '# harmless note
 git push origin --force'
 assert_guard 2 'echo "#" ; git push origin --force'
 
+# Project-owned extra rules live at $CLAUDE_PROJECT_DIR/.ratchet/guard-destructive.rules
+# (git toplevel if that env is unset). They are additive: they cannot weaken a default.
+EXAMPLE_PROJECT_RULES='# Extra blocked commands for this project. Combined with Ratchet defaults.
+# Blank lines and comments are ignored. Each remaining line is an unanchored POSIX ERE
+# matched against the same normalized command text the default rules use.
+npm run db:push
+drizzle-kit generate
+'
+
+stage_project_rules() {
+  local dir="$1" body="${2:-$EXAMPLE_PROJECT_RULES}"
+  mkdir -p "$dir/.ratchet"
+  printf '%s' "$body" > "$dir/.ratchet/guard-destructive.rules"
+}
+
+assert_guard_proj() {
+  local expected="$1" cmd="$2" proj="$3" actual
+  printf '{"tool_name":"Bash","tool_input":{"command":%s}}' "$(json_str "$cmd")" \
+    | CLAUDE_PROJECT_DIR="$proj" ./guard-destructive.sh >/dev/null 2>&1
+  actual=$?
+  if [ "$actual" -eq "$expected" ]; then
+    pass=$((pass + 1))
+  else
+    fail=$((fail + 1))
+    printf 'FAIL: expected exit %s, got %s for: %s (project %s)\n' "$expected" "$actual" "$cmd" "$proj"
+  fi
+}
+
+echo "== guard: project rule file blocks a matching command =="
+# The documented example: npm run db:push and drizzle-kit generate (including npx).
+rulesproj=$(mktemp -d)
+stage_project_rules "$rulesproj"
+assert_guard_proj 2 'npm run db:push' "$rulesproj"
+assert_guard_proj 2 'npm run db:push --force' "$rulesproj"
+assert_guard_proj 2 "npm run 'db:push'" "$rulesproj"
+assert_guard_proj 2 'drizzle-kit generate' "$rulesproj"
+assert_guard_proj 2 'npx drizzle-kit generate' "$rulesproj"
+# CRLF line endings still match; a Windows-edited file is not malformed.
+printf 'npm run db:push\r\n' > "$rulesproj/.ratchet/guard-destructive.rules"
+assert_guard_proj 2 'npm run db:push' "$rulesproj"
+printf '%s' "$EXAMPLE_PROJECT_RULES" > "$rulesproj/.ratchet/guard-destructive.rules"
+assert_guard_proj 0 'npm test' "$rulesproj"
+assert_guard_proj 0 'npm run lint' "$rulesproj"
+# A pattern that starts with - is still an ERE, not a grep flag.
+printf '%s\n' '--extra-dangerous' >> "$rulesproj/.ratchet/guard-destructive.rules"
+assert_guard_proj 2 'tool --extra-dangerous' "$rulesproj"
+assert_guard_proj 0 'npm test' "$rulesproj"
+# The BLOCKED line must name the project rule that matched.
+out=$(printf '{"tool_name":"Bash","tool_input":{"command":%s}}' "$(json_str 'npm run db:push')" \
+  | CLAUDE_PROJECT_DIR="$rulesproj" ./guard-destructive.sh 2>&1 >/dev/null)
+if printf '%s' "$out" | grep -q 'BLOCKED by guard hook' \
+   && printf '%s' "$out" | grep -q 'project rule' \
+   && printf '%s' "$out" | grep -q 'npm run db:push'; then
+  pass=$((pass + 1))
+else
+  fail=$((fail + 1)); printf 'FAIL: project-rule block message should name the matching rule, got: %s\n' "$out"
+fi
+# Found via CLAUDE_PROJECT_DIR even when the hook itself lives in a plugin root.
+plugroot=$(mktemp -d)
+cp ./guard-destructive.sh ./lib-payload.sh "$plugroot/"
+chmod +x "$plugroot/guard-destructive.sh"
+printf '{"tool_name":"Bash","tool_input":{"command":%s}}' "$(json_str 'npx drizzle-kit generate')" \
+  | CLAUDE_PROJECT_DIR="$rulesproj" "$plugroot/guard-destructive.sh" >/dev/null 2>&1
+[ $? -eq 2 ] && pass=$((pass + 1)) || { fail=$((fail + 1)); echo "FAIL: plugin-root copy of the guard should still load project rules via CLAUDE_PROJECT_DIR"; }
+rm -rf "$plugroot"
+
+echo "== guard: default rules still block when a project rule file is present =="
+assert_guard_proj 2 'git push --force' "$rulesproj"
+assert_guard_proj 2 'git push origin --force' "$rulesproj"
+assert_guard_proj 2 'drizzle-kit push' "$rulesproj"
+assert_guard_proj 2 'npm run db:migrate' "$rulesproj"
+assert_guard_proj 0 'git push origin main' "$rulesproj"
+rm -rf "$rulesproj"
+
+echo "== guard: missing or empty project rule file falls back to defaults =="
+missingproj=$(mktemp -d)
+mkdir -p "$missingproj/.ratchet"
+# No file at all: defaults only. db:push is not a default.
+assert_guard_proj 0 'npm run db:push' "$missingproj"
+assert_guard_proj 0 'drizzle-kit generate' "$missingproj"
+assert_guard_proj 2 'git push --force' "$missingproj"
+assert_guard_proj 2 'drizzle-kit push' "$missingproj"
+# Empty file, comments-only, and blank lines: same as missing.
+: > "$missingproj/.ratchet/guard-destructive.rules"
+assert_guard_proj 0 'npm run db:push' "$missingproj"
+assert_guard_proj 2 'git push --force' "$missingproj"
+printf '# only a comment\n\n   \n' > "$missingproj/.ratchet/guard-destructive.rules"
+assert_guard_proj 0 'npm run db:push' "$missingproj"
+assert_guard_proj 2 'drizzle-kit push' "$missingproj"
+rm -rf "$missingproj"
+
+echo "== guard: malformed or unreadable project rule file fails closed =="
+# Present-but-unusable is "cannot verify", same class as a missing lib-payload.sh:
+# every real command is blocked, including ones the defaults would allow.
+badproj=$(mktemp -d)
+mkdir -p "$badproj/.ratchet"
+assert_malformed() {
+  local cmd="$1" label="$2" actual out
+  out=$(printf '{"tool_name":"Bash","tool_input":{"command":%s}}' "$(json_str "$cmd")" \
+    | CLAUDE_PROJECT_DIR="$badproj" ./guard-destructive.sh 2>&1 >/dev/null)
+  actual=$?
+  if [ "$actual" -ne 2 ]; then
+    fail=$((fail + 1)); printf 'FAIL: expected exit 2, got %s for: %s\n' "$actual" "$label"; return
+  fi
+  if ! printf '%s' "$out" | grep -q 'BLOCKED by guard hook'; then
+    fail=$((fail + 1)); printf 'FAIL: %s: missing BLOCKED line, got: %s\n' "$label" "$out"; return
+  fi
+  if ! printf '%s' "$out" | grep -q 'guard-destructive.rules'; then
+    fail=$((fail + 1)); printf 'FAIL: %s: BLOCKED line should name the project rule file, got: %s\n' "$label" "$out"; return
+  fi
+  pass=$((pass + 1))
+}
+# Invalid POSIX ERE.
+printf 'npm run db:push\n[unclosed\n' > "$badproj/.ratchet/guard-destructive.rules"
+assert_malformed 'npm test' 'invalid ERE in project rule file'
+assert_malformed 'git status' 'invalid ERE also blocks a default-allowed command'
+# A directory at the path is not a rule file.
+rm -f "$badproj/.ratchet/guard-destructive.rules"
+mkdir "$badproj/.ratchet/guard-destructive.rules"
+assert_malformed 'npm test' 'project rule path is a directory'
+rmdir "$badproj/.ratchet/guard-destructive.rules"
+# Unreadable regular file. chmod a-r does not hide the file from UID 0.
+printf 'npm run db:push\n' > "$badproj/.ratchet/guard-destructive.rules"
+chmod a-r "$badproj/.ratchet/guard-destructive.rules"
+if [ -r "$badproj/.ratchet/guard-destructive.rules" ]; then
+  echo "SKIP: unreadable project rule file needs a non-root runner (chmod a-r is still readable to UID 0)"
+else
+  assert_malformed 'npm test' 'project rule file unreadable'
+fi
+chmod u+r "$badproj/.ratchet/guard-destructive.rules" 2>/dev/null || chmod a+r "$badproj/.ratchet/guard-destructive.rules"
+rm -rf "$badproj"
+
 echo "== lint hook: unreachable project dir must not read as linted =="
 printf '{"tool_input":{"file_path":"/tmp/x.ts"}}' | CLAUDE_PROJECT_DIR=/nonexistent-dir-xyz ./lint-edited-file.sh >/dev/null 2>&1
 [ $? -eq 2 ] && pass=$((pass + 1)) || { fail=$((fail + 1)); echo "FAIL: lint hook should exit 2 when it cannot enter the project dir"; }

@@ -22,7 +22,7 @@ Ratchet treats the repository as the durable source of truth. Conversation histo
 | `drop-in/api-system-prompt.txt` | Reliability rules + optional second-pass reviewer prompt | Appended to the system prompt of any API-powered app |
 | `drop-in/review-prompts.md` | Copy-paste prompts for adversarial review and verification | Keep available for manual/fresh-context review passes |
 | `drop-in/claude-code-hooks-settings.json` | Post-edit lint hook (one linter per file type; a mapped type with no linter installed is reported, not skipped), stop-hook test gate (also refuses to finish while `.ratchet/` memory still says `FILL-ME`), destructive-command guard | Merge into `.claude/settings.json` in the repo; copy `drop-in/hooks/` alongside it |
-| `drop-in/hooks/` | Tested verification/guard scripts | Copy to `.claude/hooks/`, configure, and run `test-hooks.sh` |
+| `drop-in/hooks/` | Tested verification/guard scripts. `guard-destructive.sh` also reads optional project-owned extra rules at `.ratchet/guard-destructive.rules` (see below) | Copy to `.claude/hooks/`, configure, and run `test-hooks.sh` |
 | `drop-in/.claude-plugin/`, `drop-in/plugin-hooks.json`, `.claude-plugin/marketplace.json` | The same skills plus the destructive-command guard, packaged as a Claude Code plugin; the repo is its own marketplace. `tests/test-plugin.sh` checks the manifests point at real, working things | `/plugin marketplace add baisethomas/Ratchet`, then `/plugin install ratchet@ratchet`. Then `/ratchet:ratchet-init` in each repo for the parts that must live there (it passes `--plugin` to the installer so skills and the guard are not installed twice) |
 | `drop-in/skills/` | Eight procedures agents load on their own when the task matches. `ratchet-done`: completion gate (diff audit, checks, RAN / READ / ASSUMED / INCONCLUSIVE, state refresh). `ratchet-bugfix`: reproduce, fix, then `rrr.sh` proves the test fails without the fix; after two fixes on one premise fail, the premise is tested before a third. `ratchet-review`: hostile review in a fresh context, every finding reproduced before it is acted on, with a stop rule. `ratchet-handoff`: commit dirty work as `wip:`, rewrite `STATE.md` with tagged in-flight lines, classify and record decisions; `runlog.sh` keeps an append-only run log for long runs. `ratchet-pickup`: the read side — verify each inherited claim against git and the check command, repair stale state, name the resume point, redo nothing. `ratchet-tighten`: turn an escaped failure into one permanent fix, a check before a rule, and keep the rule-to-enforcer table in `AGENTS.md` current. `ratchet-init`: install all of this into a repo with `install.sh`, which never overwrites (user-invoked only). `ratchet-upgrade`: bring an older install to the current release with `upgrade.sh`, a three-way merge that keeps the owner's filled slots, never touches `.ratchet/`, and writes only on `--apply` (user-invoked only). Rules stay in `AGENTS.md`; skills only carry the how. Ideas adapted from Matt Pocock's skills and Lauren Tan's pstack are listed in `drop-in/skills/CREDITS.md` | Run `drop-in/skills/ratchet-init/scripts/install.sh`, or copy to `.agents/skills/` and symlink `.claude/skills` to it. Then run `ratchet-bugfix/scripts/test-rrr.sh`, `ratchet-handoff/scripts/test-runlog.sh`, and `ratchet-upgrade/scripts/test-upgrade.sh` |
 | `drop-in/done-audit-checklist.md` | Short acceptance audit for every nontrivial "done" | Use at final review, especially on high-risk work |
@@ -93,6 +93,37 @@ Database migrations are treated separately as a hard stop when they may affect a
 By default, `.ratchet/STATE.md` and `.ratchet/DECISIONS.md` are intended to be committed so project memory travels with the repository. That means agents must treat them as repository-visible information: never store secrets, credentials, access tokens, personal/customer data, or sensitive security/incident details. Store sanitized references to the approved protected system instead.
 
 If the project requires private memory, gitignore `.ratchet/` or use the project's approved private store. This trades away automatic cross-clone continuity unless that private store is available to every agent.
+
+## Project-owned guard rules
+
+A project can block extra commands in `guard-destructive.sh` without forking Ratchet files. Create this file in the **project**, not in Ratchet's `drop-in/`:
+
+```text
+.ratchet/guard-destructive.rules
+```
+
+**Why that path.** `.ratchet/` is already project-owned (`STATE.md`, `DECISIONS.md`, `run.tsv`). The rules file is not a Ratchet template: `install.sh` will not seed it and will `SKIP` that destination even if a source later ships a copy; `upgrade.sh` classifies it `MEMORY` and never writes it. The hook finds it from the project root (`CLAUDE_PROJECT_DIR`, else `git rev-parse --show-toplevel`, else `.`), so the same file is used whether the hook is running from `.claude/hooks`, from `${CLAUDE_PLUGIN_ROOT}/hooks`, or from any other copy.
+
+**Syntax.** Line-oriented text.
+
+- Blank lines are ignored.
+- A line whose first non-whitespace character is `#` is a comment.
+- Leading and trailing whitespace on each line is trimmed. A trailing CR is stripped, so CRLF files match the same as LF.
+- Every remaining line is an unanchored POSIX ERE, matched with `grep -E --` against the same **normalized** command text the default rules use (quotes stripped, operators padded). `--` means a pattern may start with `-`. `drizzle-kit generate` therefore also matches `npx drizzle-kit generate`. To require a token boundary, write it in the pattern (`npm run db:push([[:space:]]|$)`).
+
+**How it combines with the defaults.** Project patterns are **additive**. They cannot disable or weaken a default rule. Defaults run first, so `git push --force` and `drizzle-kit push` still block when the file is present. A matching project pattern is reported as `project rule '<pattern>'` in the BLOCKED message.
+
+**Missing or empty.** No file, an empty file, or a file that is only comments and blank lines: defaults only.
+
+**Malformed or unreadable.** Fail closed, same class as a missing `lib-payload.sh`: if the path exists but is not a readable regular file, or any pattern is not a valid POSIX ERE, every real command exits 2 with a BLOCKED line that names `.ratchet/guard-destructive.rules`. "Cannot verify" is not treated as "nothing to block".
+
+Example (blocks `npm run db:push` and `drizzle-kit generate`, including the `npx` form):
+
+```
+# Extra blocked commands for this project. Combined with Ratchet defaults.
+npm run db:push
+drizzle-kit generate
+```
 
 ## Install order
 

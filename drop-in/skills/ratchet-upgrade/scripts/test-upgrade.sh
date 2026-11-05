@@ -233,5 +233,34 @@ else
   echo "SKIP: no 1.0.0 release in this checkout's history; the real-history case was not run"
 fi
 
+echo "== project rule file is left byte-for-byte unchanged by report and apply-all =="
+# .ratchet/guard-destructive.rules is project-owned. Upgrade must not merge,
+# replace, or create it — even when the new release's drop-in happens to ship
+# a copy with different bytes.
+new_repo; install_old_and_fill
+mkdir -p "$repo/.ratchet"
+printf '%s' '# Extra blocked commands for this project. Combined with Ratchet defaults.
+# Blank lines and comments are ignored. Each remaining line is an unanchored POSIX ERE
+# matched against the same normalized command text the default rules use.
+npm run db:push
+drizzle-kit generate
+' > "$repo/.ratchet/guard-destructive.rules"
+rules_before="$(cksum < "$repo/.ratchet/guard-destructive.rules")"
+from_with_template="$sandbox/from-with-rules-template"
+rm -rf "$from_with_template"
+cp -R "$dropin" "$from_with_template"
+mkdir -p "$from_with_template/.ratchet"
+printf '%s\n' 'THIS MUST NOT LAND' > "$from_with_template/.ratchet/guard-destructive.rules"
+out="$("$upgrade" --from "$from_with_template" --to "$repo" --base "$old" 2>&1)"; code=$?
+[ "$code" -eq 0 ] && ok || no "report with a project rule file exited $code: $out"
+[ "$(cksum < "$repo/.ratchet/guard-destructive.rules")" = "$rules_before" ] && ok || no "report mode changed .ratchet/guard-destructive.rules"
+[ "$(status_of "$out" .ratchet/guard-destructive.rules)" = MEMORY ] && ok || no "project rule file should be MEMORY, got: $(status_of "$out" .ratchet/guard-destructive.rules)"
+out="$("$upgrade" --from "$from_with_template" --to "$repo" --base "$old" --apply-all 2>&1)"; code=$?
+[ "$code" -eq 0 ] && ok || no "apply-all with a project rule file exited $code: $out"
+[ "$(cksum < "$repo/.ratchet/guard-destructive.rules")" = "$rules_before" ] && ok || no "apply-all changed .ratchet/guard-destructive.rules"
+grep -q 'THIS MUST NOT LAND' "$repo/.ratchet/guard-destructive.rules" && no "apply-all wrote the source template over the project rule file" || ok
+printf '%s' "$out" | grep -q '^UPGRADED  .ratchet/guard-destructive.rules' && no "apply-all reported UPGRADED for the project rule file" || ok
+printf '%s' "$out" | grep -q '^ADDED     .ratchet/guard-destructive.rules' && no "apply-all reported ADDED for the project rule file" || ok
+
 printf '\n%s passed, %s failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

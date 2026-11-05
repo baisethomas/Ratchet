@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# ratchet-version: 1.2.2
+# ratchet-version: 1.3.0
 # Upgrade Ratchet's per-repo drop-ins to a newer release without losing the owner's edits.
 #
 #   upgrade.sh --to <repo root> [--from <ratchet>/drop-in] [--base <drop-in at the installed version>]
@@ -17,7 +17,7 @@
 #   MERGE     the owner's edits replay cleanly onto the new release (proposal staged)
 #   CONFLICT  the owner and the release changed the same lines (proposal with markers)
 #   NOBASE    changed, but no base to merge against; diff only (pass --base)
-#   MEMORY    .ratchet/STATE.md or DECISIONS.md: live project memory, never written
+#   MEMORY    .ratchet/STATE.md, DECISIONS.md, or guard-destructive.rules: project-owned, never written
 #   NEW       in the release, not in the repo, inside an installed tree (apply copies it)
 #   ABSENT    not installed at all; install.sh is the tool for that, not this one
 #   SKIP      the destination is a symlink or sits under one; never written through
@@ -196,6 +196,10 @@ same_exec() {
 # install.sh and git checkout have, and it is stated here rather than papered over.
 write_file() {
   local src="$1" rel="$2" mode_src="${3:-$1}" dest="$to/$2" tmp
+  # Belt: even if a future classifier calls this for the project rule file, do not write it.
+  if [ "$rel" = ".ratchet/guard-destructive.rules" ]; then
+    printf 'REFUSE    %s (project-owned)\n' "$rel"; refused=$((refused + 1)); return 1
+  fi
   if [ -L "$dest" ] || linked_parent "$rel"; then printf 'REFUSE    %s (became a symlink)\n' "$rel"; refused=$((refused + 1)); return 1; fi
   mkdir -p "$(dirname "$dest")" || { printf 'REFUSE    %s (cannot create its directory)\n' "$rel"; refused=$((refused + 1)); return 1; }
   tmp="$(mktemp "$(dirname "$dest")/.ratchet-upgrade.XXXXXX")" || { printf 'REFUSE    %s (cannot stage a write)\n' "$rel"; refused=$((refused + 1)); return 1; }
@@ -277,6 +281,12 @@ consider "$from/CLAUDE.md" "CLAUDE.md" core
 consider "$from/CODEX.md" "CODEX.md" core
 consider "$from/STATE.md" ".ratchet/STATE.md" memory
 consider "$from/DECISIONS.md" ".ratchet/DECISIONS.md" memory
+# Project-owned extra guard rules. Not a Ratchet template: classified only when
+# the dest file already exists, so repos without extra rules are not an ABSENT
+# line, and a copy in the source (now or later) is never merged or created.
+if [ -e "$to/.ratchet/guard-destructive.rules" ] || [ -L "$to/.ratchet/guard-destructive.rules" ]; then
+  consider "$from/.ratchet/guard-destructive.rules" ".ratchet/guard-destructive.rules" memory
+fi
 for dir in hooks:.claude/hooks skills:.agents/skills; do
   srcdir="$from/${dir%%:*}"; destdir="${dir#*:}"
   [ -d "$srcdir" ] || continue
