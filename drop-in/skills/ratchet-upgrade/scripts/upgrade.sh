@@ -174,9 +174,10 @@ requested=0
 
 # file_mode <path> — permission bits as octal with no leading zero (755, 644).
 # GNU stat -c %a, BSD/macOS stat -f %OLp, python3 as a last resort. Comparison
-# and restore use this, not test -x: 0755 and 0711 are both executable for the
-# owner, and 0644 and 0600 are both not, so an owner-exec check hides group/other
-# drift and mktemp-then-chmod-+x landing on 0711.
+# and restore use st_mode & 0777, not test -x: 0755 and 0711 are both executable
+# for the owner, and 0644 and 0600 are both not, so an owner-exec check hides
+# group/other drift and mktemp-then-chmod-+x landing on 0711. Setuid/setgid/sticky
+# are stripped so apply never copies them; GNU %a can return 4755.
 file_mode() {
   local m
   # GNU first, then BSD/macOS. macOS `stat -c` is a different flag and can succeed
@@ -194,7 +195,7 @@ file_mode() {
       esac
       ;;
   esac
-  printf '%o' "$((8#$m))"
+  printf '%o' "$((8#$m & 8#777))"
 }
 
 # same_mode <a> <b> — the permission bits match. Unreadable mode is not "same".

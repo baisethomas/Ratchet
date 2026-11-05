@@ -257,6 +257,31 @@ out="$("$upgrade" --from "$dropin" --to "$repo" --base "$dropin" --apply "$hook"
 [ "$(mode_of "$repo/$hook")" = 755 ] && ok || no "apply should restore hook to 755, got $(mode_of "$repo/$hook")"
 [ "$(mode_of "$repo/$doc")" = 644 ] && ok || no "apply should restore AGENTS.md to 644, got $(mode_of "$repo/$doc")"
 
+echo "== apply strips setuid/setgid/sticky; comparison uses 0777 =="
+# GNU stat -c %a can return 4755. Comparison and restore are st_mode & 0777,
+# so a setuid upstream must not land as 4755 and must not look different from 0755.
+new_repo
+"$install" --from "$dropin" --to "$repo" --claude >/dev/null 2>&1
+hook=".claude/hooks/guard-destructive.sh"
+doc="AGENTS.md"
+src="$sandbox/from.setuid"
+rm -rf "$src"
+cp -R "$dropin" "$src"
+chmod 4755 "$src/hooks/guard-destructive.sh"
+chmod 1644 "$src/AGENTS.md"
+[ "$(mode_of "$src/hooks/guard-destructive.sh")" = 4755 ] && ok || no "fixture: setuid source hook should be 4755, got $(mode_of "$src/hooks/guard-destructive.sh")"
+[ "$(mode_of "$src/AGENTS.md")" = 1644 ] && ok || no "fixture: sticky source AGENTS.md should be 1644, got $(mode_of "$src/AGENTS.md")"
+out="$("$upgrade" --from "$src" --to "$repo" --base "$src" 2>&1)"; code=$?
+[ "$code" -eq 0 ] && ok || no "setuid SAME report exited $code"
+[ "$(status_of "$out" "$hook")" = SAME ] && ok || no "4755 vs 755 should be SAME after 0777 mask, got: $(status_of "$out" "$hook")"
+[ "$(status_of "$out" "$doc")" = SAME ] && ok || no "1644 vs 644 should be SAME after 0777 mask, got: $(status_of "$out" "$doc")"
+chmod 711 "$repo/$hook"
+chmod 600 "$repo/$doc"
+out="$("$upgrade" --from "$src" --to "$repo" --base "$src" --apply "$hook" --apply "$doc" 2>&1)"; code=$?
+[ "$code" -eq 0 ] && ok || no "setuid apply exited $code: $out"
+[ "$(mode_of "$repo/$hook")" = 755 ] && ok || no "apply of 4755 source must land 755, got $(mode_of "$repo/$hook")"
+[ "$(mode_of "$repo/$doc")" = 644 ] && ok || no "apply of 1644 source must land 644, got $(mode_of "$repo/$doc")"
+
 echo "== setup errors exit 2 =="
 new_repo
 "$upgrade" --from "$dropin" >/dev/null 2>&1; [ $? -eq 2 ] && ok || no "missing --to should be a usage error"

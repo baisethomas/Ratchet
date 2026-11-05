@@ -127,7 +127,7 @@ drizzle-kit generate
 
 ## Upgrade: bytes and permission bits
 
-`upgrade.sh` treats an installed file as `SAME` only when both the bytes and the permission bits (`st_mode & 0777`) match the new release. Group/other drift that leaves the owner-exec bit unchanged (0755 vs 0711, 0644 vs 0600) is `MERGE` with `mode differs`, in report mode and in apply. Apply copies the upstream octal mode onto the staged file; it does not `chmod +x`/`chmod -x` after `mktemp` (0600), which used to land hooks at 0711 and ordinary files at 0600.
+`upgrade.sh` treats an installed file as `SAME` only when both the bytes and the permission bits (`st_mode & 0777`) match the new release. Group/other drift that leaves the owner-exec bit unchanged (0755 vs 0711, 0644 vs 0600) is `MERGE` with `mode differs`, in report mode and in apply. Apply copies those nine bits onto the staged file; it does not `chmod +x`/`chmod -x` after `mktemp` (0600), which used to land hooks at 0711 and ordinary files at 0600. Setuid, setgid, and sticky are stripped, so a 4755 upstream lands as 755.
 
 The bits are read with GNU `stat -c '%a'`, then BSD/macOS `stat -f '%OLp'`, then `python3`. Only a 3–4 digit octal string is trusted, so macOS `stat -c` (a different flag) cannot be mistaken for a mode. `chmod --reference` is not used.
 
