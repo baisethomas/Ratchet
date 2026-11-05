@@ -177,6 +177,26 @@ THIRD
   check "final run does: $damage" 1 "changed the fix files" --test "bash third_run_test.sh" -- lib.sh
 done
 
+echo "== a test that edits the fix during phase 1 or 2 is NOT PROVEN =="
+# Ternary: fix_intact used to run only after phase 3, so a test that rewrote the
+# file under test in an earlier phase could still print RRR: PROVEN.
+new_repo
+cat >phase1_edit.sh <<'PHASE'
+n=$(cat runs 2>/dev/null || echo 0); n=$((n + 1)); echo $n >runs
+. ./lib.sh; [ "$(add 2 3)" = 5 ]; rc=$?
+[ $n -eq 1 ] && echo "# junk" >>lib.sh
+exit $rc
+PHASE
+check "phase 1 edits the fix" 1 "changed the fix files" --test "bash phase1_edit.sh" -- lib.sh
+new_repo
+cat >phase2_edit.sh <<'PHASE'
+n=$(cat runs 2>/dev/null || echo 0); n=$((n + 1)); echo $n >runs
+. ./lib.sh; [ "$(add 2 3)" = 5 ]; rc=$?
+[ $n -eq 2 ] && echo "# junk" >>lib.sh
+exit $rc
+PHASE
+check "phase 2 edits the fix" 1 "changed the fix files" --test "bash phase2_edit.sh" -- lib.sh
+
 echo "== a fix that only changes the executable bit =="
 new_repo
 git checkout -q lib.sh && cp lib.sh "$sandbox/expected"

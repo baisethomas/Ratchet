@@ -179,6 +179,25 @@ mkdir -p "$sandbox/shared-hooks"; rm -rf "$repo/.claude/hooks"; ln -s "$sandbox/
 out="$("$upgrade" --from "$dropin" --to "$repo" --base "$old" --installed-version 1.1.0 --apply-all 2>&1)"
 [ -z "$(ls -A "$sandbox/shared-hooks")" ] && [ "$(status_of "$out" .claude/hooks/check-on-stop.sh)" = SKIP ] && ok || no "wrote through a symlinked hooks directory"
 
+echo "== an exec-bit-only change is reported and applied =="
+# Bytes match the new release; only the destination mode drifted. That used to
+# print SAME and apply left the old bit in place.
+new_repo
+"$install" --from "$dropin" --to "$repo" --claude >/dev/null 2>&1
+hook=".claude/hooks/guard-destructive.sh"
+[ -x "$dropin/hooks/guard-destructive.sh" ] && [ -x "$repo/$hook" ] && ok || no "fixture: the hook should be executable in the release and in the install"
+chmod -x "$repo/$hook"
+cmp -s "$dropin/hooks/guard-destructive.sh" "$repo/$hook" && ok || no "fixture: chmod -x should not change the hook's bytes"
+[ ! -x "$repo/$hook" ] && ok || no "fixture: destination should have lost its executable bit"
+out="$("$upgrade" --from "$dropin" --to "$repo" --base "$dropin" 2>&1)"; code=$?
+[ "$code" -eq 0 ] && [ "$(status_of "$out" "$hook")" != "SAME" ] && ok || no "mode-only change should not be SAME, got: $(status_of "$out" "$hook") (exit $code)"
+[ "$(status_of "$out" "$hook")" = "MERGE" ] && ok || no "mode-only change should be MERGE so apply can take it, got: $(status_of "$out" "$hook")"
+[ ! -x "$repo/$hook" ] && ok || no "report mode restored the executable bit"
+out="$("$upgrade" --from "$dropin" --to "$repo" --base "$dropin" --apply "$hook" 2>&1)"; code=$?
+[ "$code" -eq 0 ] && printf '%s' "$out" | grep -q "^UPGRADED  $hook" && ok || no "mode-only apply should upgrade the hook (exit $code)"
+[ -x "$repo/$hook" ] && ok || no "apply did not restore the upstream executable bit"
+cmp -s "$dropin/hooks/guard-destructive.sh" "$repo/$hook" && ok || no "apply changed the hook's bytes"
+
 echo "== setup errors exit 2 =="
 new_repo
 "$upgrade" --from "$dropin" >/dev/null 2>&1; [ $? -eq 2 ] && ok || no "missing --to should be a usage error"
