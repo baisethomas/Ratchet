@@ -133,6 +133,8 @@ The bits are read with GNU `stat -c '%a'`, then BSD/macOS `stat -f '%OLp'`, then
 
 This is a medium-impact product decision (D-20261105-0007-upgrade-full-mode-bits). The Ratchet checkout has no root `.ratchet/`, so it is recorded here rather than in live project memory: `skip: no root .ratchet/ in Ratchet repo`.
 
+This is a medium-impact product decision (D-20261105-0040-semver-1-3-0-minor). Version 1.3.0 is a minor bump: the project rules file is a backward-compatible new feature (installs without it behave as before), and the mode-restore fix rides along in the same unreleased minor after 1.2.2 already shipped. The Ratchet checkout has no root `.ratchet/`, so it is recorded here rather than in live project memory: `skip: no root .ratchet/ in Ratchet repo`.
+
 ## Install order
 
 **Plugin route (Claude Code):** `/plugin marketplace add baisethomas/Ratchet`, then `/plugin install ratchet@ratchet`. That delivers the seven skills and the destructive-command guard to every project, and updates arrive with `/plugin marketplace update ratchet` instead of re-copying files. It does **not** deliver the contract, project memory, stop gate, or adapters — those are per-repo by design, so run `/ratchet:ratchet-init` in each repo once, and `/ratchet:ratchet-upgrade` in each repo when a newer release changes them (the installer never overwrites, so nothing else brings them forward). Claude Code leaves auto-update off for third-party marketplaces; enable it for `ratchet` under `/plugin` or update by hand. Codex has no plugin system; it reads the same skills from `.agents/skills/` after `ratchet-init`, and `ratchet-upgrade` refreshes that copy too.
