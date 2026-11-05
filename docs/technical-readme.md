@@ -125,6 +125,14 @@ npm run db:push
 drizzle-kit generate
 ```
 
+## Upgrade: bytes and permission bits
+
+`upgrade.sh` treats an installed file as `SAME` only when both the bytes and the permission bits (`st_mode & 0777`) match the new release. Group/other drift that leaves the owner-exec bit unchanged (0755 vs 0711, 0644 vs 0600) is `MERGE` with `mode differs`, in report mode and in apply. Apply copies the upstream octal mode onto the staged file; it does not `chmod +x`/`chmod -x` after `mktemp` (0600), which used to land hooks at 0711 and ordinary files at 0600.
+
+The bits are read with GNU `stat -c '%a'`, then BSD/macOS `stat -f '%OLp'`, then `python3`. Only a 3–4 digit octal string is trusted, so macOS `stat -c` (a different flag) cannot be mistaken for a mode. `chmod --reference` is not used.
+
+This is a medium-impact product decision (D-20261105-0007-upgrade-full-mode-bits). The Ratchet checkout has no root `.ratchet/`, so it is recorded here rather than in live project memory: `skip: no root .ratchet/ in Ratchet repo`.
+
 ## Install order
 
 **Plugin route (Claude Code):** `/plugin marketplace add baisethomas/Ratchet`, then `/plugin install ratchet@ratchet`. That delivers the seven skills and the destructive-command guard to every project, and updates arrive with `/plugin marketplace update ratchet` instead of re-copying files. It does **not** deliver the contract, project memory, stop gate, or adapters — those are per-repo by design, so run `/ratchet:ratchet-init` in each repo once, and `/ratchet:ratchet-upgrade` in each repo when a newer release changes them (the installer never overwrites, so nothing else brings them forward). Claude Code leaves auto-update off for third-party marketplaces; enable it for `ratchet` under `/plugin` or update by hand. Codex has no plugin system; it reads the same skills from `.agents/skills/` after `ratchet-init`, and `ratchet-upgrade` refreshes that copy too.

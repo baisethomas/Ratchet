@@ -27,6 +27,25 @@ export TMPDIR="$sandbox"   # staging directories land here and go with the sandb
 
 ok() { pass=$((pass + 1)); }
 no() { fail=$((fail + 1)); printf 'FAIL: %s\n' "$1"; }
+# mode_of <file> — permission bits as octal without a leading zero (755, 644).
+# GNU stat -c %a, BSD stat -f %OLp, python3 last.
+mode_of() {
+  local m
+  m=$(stat -c '%a' "$1" 2>/dev/null || true)
+  case "$m" in
+    [0-7][0-7][0-7]|[0-7][0-7][0-7][0-7]) ;;
+    *)
+      m=$(stat -f '%OLp' "$1" 2>/dev/null || true)
+      case "$m" in
+        [0-7][0-7][0-7]|[0-7][0-7][0-7][0-7]) ;;
+        *)
+          m=$(python3 -c 'import os,sys; print("{:o}".format(os.stat(sys.argv[1]).st_mode & 0o777))' "$1") || return 1
+          ;;
+      esac
+      ;;
+  esac
+  printf '%o' "$((8#$m))"
+}
 snapshot() {
   (cd "$1" && find . -path ./.git -prune -o \( -type f -o -type l \) -print | sort | while IFS= read -r f; do
     if [ -L "$f" ]; then printf 'L %s -> %s\n' "$f" "$(readlink "$f")"
@@ -197,6 +216,46 @@ out="$("$upgrade" --from "$dropin" --to "$repo" --base "$dropin" --apply "$hook"
 [ "$code" -eq 0 ] && printf '%s' "$out" | grep -q "^UPGRADED  $hook" && ok || no "mode-only apply should upgrade the hook (exit $code)"
 [ -x "$repo/$hook" ] && ok || no "apply did not restore the upstream executable bit"
 cmp -s "$dropin/hooks/guard-destructive.sh" "$repo/$hook" && ok || no "apply changed the hook's bytes"
+
+echo "== apply restores the upstream permission bits exactly (755 and 644) =="
+# mktemp stages at 0600; chmod +x on that becomes 0711, chmod -x stays 0600.
+# Apply must copy the upstream bits, not just the owner-exec bit.
+new_repo
+"$install" --from "$dropin" --to "$repo" --claude >/dev/null 2>&1
+hook=".claude/hooks/guard-destructive.sh"
+doc="AGENTS.md"
+[ "$(mode_of "$dropin/hooks/guard-destructive.sh")" = 755 ] && ok || no "fixture: upstream hook should be 755, got $(mode_of "$dropin/hooks/guard-destructive.sh")"
+[ "$(mode_of "$dropin/AGENTS.md")" = 644 ] && ok || no "fixture: upstream AGENTS.md should be 644, got $(mode_of "$dropin/AGENTS.md")"
+chmod 711 "$repo/$hook"
+chmod 600 "$repo/$doc"
+out="$("$upgrade" --from "$dropin" --to "$repo" --base "$dropin" --apply "$hook" --apply "$doc" 2>&1)"; code=$?
+[ "$code" -eq 0 ] && ok || no "exact-mode apply exited $code: $out"
+[ "$(mode_of "$repo/$hook")" = 755 ] && ok || no "applied hook mode should be 755, got $(mode_of "$repo/$hook")"
+[ "$(mode_of "$repo/$doc")" = 644 ] && ok || no "applied AGENTS.md mode should be 644, got $(mode_of "$repo/$doc")"
+
+echo "== group/other mode drift is MERGE in report, not SAME =="
+# test -x is true for both 0755 and 0711 (owner can execute), and false for
+# both 0644 and 0600. Comparison must use the full permission bits.
+new_repo
+"$install" --from "$dropin" --to "$repo" --claude >/dev/null 2>&1
+hook=".claude/hooks/guard-destructive.sh"
+doc="AGENTS.md"
+chmod 711 "$repo/$hook"
+chmod 600 "$repo/$doc"
+cmp -s "$dropin/hooks/guard-destructive.sh" "$repo/$hook" && ok || no "fixture: 711 chmod must not change hook bytes"
+cmp -s "$dropin/AGENTS.md" "$repo/$doc" && ok || no "fixture: 600 chmod must not change AGENTS.md bytes"
+out="$("$upgrade" --from "$dropin" --to "$repo" --base "$dropin" 2>&1)"; code=$?
+[ "$code" -eq 0 ] && ok || no "mode-drift report exited $code"
+[ "$(status_of "$out" "$hook")" = MERGE ] && ok || no "0711 vs 0755 should be MERGE, got: $(status_of "$out" "$hook")"
+[ "$(status_of "$out" "$doc")" = MERGE ] && ok || no "0600 vs 0644 should be MERGE, got: $(status_of "$out" "$doc")"
+printf '%s' "$out" | grep -E "MERGE +$hook" | grep -q 'mode differs' && ok || no "hook MERGE line should say mode differs"
+printf '%s' "$out" | grep -E "MERGE +$doc" | grep -q 'mode differs' && ok || no "AGENTS.md MERGE line should say mode differs"
+[ "$(mode_of "$repo/$hook")" = 711 ] && ok || no "report mode must not rewrite the 711 hook, got $(mode_of "$repo/$hook")"
+[ "$(mode_of "$repo/$doc")" = 600 ] && ok || no "report mode must not rewrite the 600 AGENTS.md, got $(mode_of "$repo/$doc")"
+out="$("$upgrade" --from "$dropin" --to "$repo" --base "$dropin" --apply "$hook" --apply "$doc" 2>&1)"; code=$?
+[ "$code" -eq 0 ] && ok || no "mode-drift apply exited $code: $out"
+[ "$(mode_of "$repo/$hook")" = 755 ] && ok || no "apply should restore hook to 755, got $(mode_of "$repo/$hook")"
+[ "$(mode_of "$repo/$doc")" = 644 ] && ok || no "apply should restore AGENTS.md to 644, got $(mode_of "$repo/$doc")"
 
 echo "== setup errors exit 2 =="
 new_repo

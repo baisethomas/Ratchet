@@ -26,7 +26,7 @@ The script does the mechanical part: it compares every installed file with the n
 
 It writes nothing in the repo. Read the `INFO base:` line first: without a base there is no merge, only a diff. The base comes from the source checkout's history by version; if the source is not a git checkout, or the owner installed from a specific commit, pass `--base <drop-in at that version>`.
 
-Then read each status line. `SAME`, `MEMORY`, `ABSENT`, and `SKIP` need nothing. `NEW` is a file the release added (a new skill, a new script). `MERGE` has a clean proposal in the staging directory. `CONFLICT` has a proposal with markers. `NOBASE` has no proposal.
+Then read each status line. `SAME` means bytes and permission bits both match the new release (`test -x` is not the comparison: 0755 and 0711 are both owner-executable). `MEMORY`, `ABSENT`, and `SKIP` need nothing. `NEW` is a file the release added (a new skill, a new script). `MERGE` has a clean proposal in the staging directory, including a bytes-identical file whose mode drifted (`mode differs`). `CONFLICT` has a proposal with markers. `NOBASE` has no proposal. Apply restores the upstream mode bits exactly, not only the owner-exec bit.
 
 **Done when:** every file has a status and you know which ones carry a proposal.
 
