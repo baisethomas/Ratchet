@@ -824,6 +824,45 @@ fi
 chmod u+r "$badproj/.ratchet/guard-destructive.rules" 2>/dev/null || chmod a+r "$badproj/.ratchet/guard-destructive.rules"
 rm -rf "$badproj"
 
+echo "== guard: a read failure after a successful open fails closed =="
+# -f/-r pass; the subsequent slurp (`cat --` of that path) fails. A portable
+# mid-read I/O error is not stageable here, so a cat on PATH that exits 1 for
+# this path is the same failure the hook denies on (see ASSUMED). Empty,
+# comment-only, and EOF-without-newline files must still not deny.
+readfail=$(mktemp -d)
+mkdir -p "$readfail/.ratchet"
+printf '%s' 'npm run db:push' > "$readfail/.ratchet/guard-destructive.rules"
+assert_guard_proj 2 'npm run db:push' "$readfail"
+assert_guard_proj 0 'npm test' "$readfail"
+: > "$readfail/.ratchet/guard-destructive.rules"
+assert_guard_proj 0 'npm run db:push' "$readfail"
+printf '# only a comment\n' > "$readfail/.ratchet/guard-destructive.rules"
+assert_guard_proj 0 'npm run db:push' "$readfail"
+printf '%s' "$EXAMPLE_PROJECT_RULES" > "$readfail/.ratchet/guard-destructive.rules"
+bindir=$(mktemp -d)
+realcat=$(command -v cat)
+cat > "$bindir/cat" <<SH
+#!/usr/bin/env bash
+for a in "\$@"; do
+  case "\$a" in
+    $readfail/.ratchet/guard-destructive.rules) exit 1 ;;
+  esac
+done
+exec "$realcat" "\$@"
+SH
+chmod +x "$bindir/cat"
+out=$(printf '{"tool_name":"Bash","tool_input":{"command":%s}}' "$(json_str 'npm test')" \
+  | PATH="$bindir:$PATH" CLAUDE_PROJECT_DIR="$readfail" ./guard-destructive.sh 2>&1 >/dev/null)
+actual=$?
+if [ "$actual" -eq 2 ] && printf '%s' "$out" | grep -q 'BLOCKED by guard hook' \
+   && printf '%s' "$out" | grep -q 'guard-destructive.rules'; then
+  pass=$((pass + 1))
+else
+  fail=$((fail + 1))
+  printf 'FAIL: read failure after open should fail closed (exit 2 naming the rules file), got %s: %s\n' "$actual" "$out"
+fi
+rm -rf "$bindir" "$readfail"
+
 echo "== lint hook: unreachable project dir must not read as linted =="
 printf '{"tool_input":{"file_path":"/tmp/x.ts"}}' | CLAUDE_PROJECT_DIR=/nonexistent-dir-xyz ./lint-edited-file.sh >/dev/null 2>&1
 [ $? -eq 2 ] && pass=$((pass + 1)) || { fail=$((fail + 1)); echo "FAIL: lint hook should exit 2 when it cannot enter the project dir"; }

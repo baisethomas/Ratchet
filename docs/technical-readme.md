@@ -115,7 +115,7 @@ A project can block extra commands in `guard-destructive.sh` without forking Rat
 
 **Missing or empty.** No file, an empty file, or a file that is only comments and blank lines: defaults only.
 
-**Malformed or unreadable.** Fail closed, same class as a missing `lib-payload.sh`: if the path exists but is not a readable regular file, or any pattern is not a valid POSIX ERE, every real command exits 2 with a BLOCKED line that names `.ratchet/guard-destructive.rules`. "Cannot verify" is not treated as "nothing to block".
+**Malformed or unreadable.** Fail closed, same class as a missing `lib-payload.sh`: if the path exists but is not a readable regular file, if the file cannot be read after that probe succeeded, or if any pattern is not a valid POSIX ERE, every real command exits 2 with a BLOCKED line that names `.ratchet/guard-destructive.rules`. "Cannot verify" is not treated as "nothing to block". A missing trailing newline, an empty file, and a comment-only file are not read failures.
 
 Example (blocks `npm run db:push` and `drizzle-kit generate`, including the `npx` form):
 
@@ -134,6 +134,8 @@ The bits are read with GNU `stat -c '%a'`, then BSD/macOS `stat -f '%OLp'`, then
 This is a medium-impact product decision (D-20261105-0007-upgrade-full-mode-bits). The Ratchet checkout has no root `.ratchet/`, so it is recorded here rather than in live project memory: `skip: no root .ratchet/ in Ratchet repo`.
 
 This is a medium-impact product decision (D-20261105-0040-semver-1-3-0-minor). Version 1.3.0 is a minor bump: the project rules file is a backward-compatible new feature (installs without it behave as before), and the mode-restore fix rides along in the same unreleased minor after 1.2.2 already shipped. The Ratchet checkout has no root `.ratchet/`, so it is recorded here rather than in live project memory: `skip: no root .ratchet/ in Ratchet repo`.
+
+This is a medium-impact product decision (D-20261105-0050-rules-read-fail-closed). A project-rules file that passes the `-f`/`-r` probe but cannot then be read is fail-closed (exit 2), the same class as an unreadable or malformed file. A bash `while read; do …; done < file || deny` cannot observe that failure. The hook slurps with `cat --` after the probe and denies if that read fails; empty, comment-only, and EOF-without-newline files still fall back to defaults. The Ratchet checkout has no root `.ratchet/`, so it is recorded here rather than in live project memory: `skip: no root .ratchet/ in Ratchet repo`.
 
 ## Install order
 

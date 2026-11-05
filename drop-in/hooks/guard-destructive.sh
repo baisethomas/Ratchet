@@ -123,8 +123,14 @@ has_i() { grep -qiE "$1" <<<"$norm"; }
 # .claude/hooks, a plugin root (${CLAUDE_PLUGIN_ROOT}/hooks), or any other
 # copy: CLAUDE_PROJECT_DIR is the project, with git toplevel then cwd as
 # fallbacks. Missing or empty = defaults only. Present but unreadable,
-# not a regular file, or containing an invalid POSIX ERE = cannot verify, so
-# fail closed (exit 2), same class as a missing lib-payload.sh.
+# not a regular file, unreadable after a successful open, or containing an
+# invalid POSIX ERE = cannot verify, so fail closed (exit 2), same class as
+# a missing lib-payload.sh. A bash `while read; do ...; done < file || deny`
+# is dead: the loop's status is the last body command, not the read, so a
+# mid-read I/O error would silently keep a partial set. Slurp with cat after
+# the -f/-r probe; if that read fails, deny. Then parse the blob. Normal EOF
+# (including no trailing newline), empty, and comment-only files still fall
+# back to defaults.
 project_dir="${CLAUDE_PROJECT_DIR:-}"
 if [ -z "$project_dir" ]; then
   project_dir="$(git rev-parse --show-toplevel 2>/dev/null)" || project_dir="."
@@ -139,6 +145,10 @@ if [ -e "$rules_file" ] || [ -L "$rules_file" ]; then
   if [ ! -f "$rules_file" ] || [ ! -r "$rules_file" ]; then
     deny_project_rules
   fi
+  # The probe passed; now read the bytes. cat failing here is the observable
+  # "read failed after open" — bash 3.2 has no portable I/O-error vs EOF
+  # distinction on `read`, and `while …; done < file || deny` never fires.
+  rules_blob=$(cat -- "$rules_file") || deny_project_rules
   while IFS= read -r line || [ -n "$line" ]; do
     line="${line%$'\r'}"
     trimmed="${line#"${line%%[![:space:]]*}"}"
@@ -152,7 +162,7 @@ if [ -e "$rules_file" ] || [ -L "$rules_file" ]; then
       0|1) project_patterns+=("$trimmed") ;;
       *) deny_project_rules ;;
     esac
-  done < "$rules_file" || deny_project_rules
+  done < <(printf '%s\n' "$rules_blob")
 fi
 
 # seg_has PAT... — true if ONE simple command matches every pattern given.

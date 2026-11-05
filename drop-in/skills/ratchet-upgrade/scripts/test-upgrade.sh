@@ -282,6 +282,24 @@ out="$("$upgrade" --from "$src" --to "$repo" --base "$src" --apply "$hook" --app
 [ "$(mode_of "$repo/$hook")" = 755 ] && ok || no "apply of 4755 source must land 755, got $(mode_of "$repo/$hook")"
 [ "$(mode_of "$repo/$doc")" = 644 ] && ok || no "apply of 1644 source must land 644, got $(mode_of "$repo/$doc")"
 
+echo "== a bytes-differ content MERGE restores upstream modes (755 and 644) =="
+# Owner-edited bytes, clean three-way merge. Mode must come from upstream
+# ($src), not from the merge-file redirect (umask 0644) or the dest.
+new_repo; install_old_and_fill
+hook=".claude/hooks/check-on-stop.sh"
+doc="AGENTS.md"
+chmod 711 "$repo/$hook"
+chmod 600 "$repo/$doc"
+out="$("$upgrade" --from "$dropin" --to "$repo" --base "$old" 2>&1)"; code=$?
+[ "$code" -eq 0 ] && [ "$(status_of "$out" "$hook")" = MERGE ] && ok || no "content-edited hook should be MERGE, got: $(status_of "$out" "$hook") (exit $code)"
+[ "$(status_of "$out" "$doc")" = MERGE ] && ok || no "content-edited AGENTS.md should be MERGE, got: $(status_of "$out" "$doc")"
+out="$("$upgrade" --from "$dropin" --to "$repo" --base "$old" --apply "$hook" --apply "$doc" 2>&1)"; code=$?
+[ "$code" -eq 0 ] && ok || no "content MERGE apply exited $code: $out"
+[ "$(mode_of "$repo/$hook")" = 755 ] && ok || no "content MERGE hook mode should be 755, got $(mode_of "$repo/$hook")"
+[ "$(mode_of "$repo/$doc")" = 644 ] && ok || no "content MERGE AGENTS.md mode should be 644, got $(mode_of "$repo/$doc")"
+grep -q 'CHECKS=("make verify")' "$repo/$hook" && ok || no "content MERGE lost the filled CHECKS line"
+grep -q 'npm test' "$repo/$doc" && ok || no "content MERGE lost the filled check command"
+
 echo "== setup errors exit 2 =="
 new_repo
 "$upgrade" --from "$dropin" >/dev/null 2>&1; [ $? -eq 2 ] && ok || no "missing --to should be a usage error"
