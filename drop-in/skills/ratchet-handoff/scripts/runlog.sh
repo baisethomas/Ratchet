@@ -74,33 +74,36 @@ done
 logdir=$(dirname "$logfile")
 [ -d "$logdir" ] || mkdir -p "$logdir"
 
-# One open in append mode, then every write goes through that descriptor. The
-# header check happens under a lock so two writers that start on an empty log
-# cannot both see it empty and both write a header. flock on the descriptor
-# where it exists; where it is missing or fails (macOS ships without it), a
+# The log is opened only after this process holds a separate lock, so a
+# refused write never creates the file and never unlinks a pathname another
+# writer could have populated. flock on a sidecar file beside the log where
+# flock exists; where it is missing or fails (macOS ships without it), a
 # directory beside the log is the lock, because mkdir is atomic on every POSIX
 # filesystem, and the holder's pid sits inside it. The fallback waits a bounded
 # two seconds. A lock whose recorded holder is no longer running is stale and
 # is taken over once. A lock that is still held, or whose holder is unknown,
 # refuses the write with exit 2 and names the directory: a row that may have
 # interleaved with another writer is worse than a row the caller is told was
-# not written. The script never appends unlocked.
-# Opening the log in append mode creates it. If the lock is then refused,
-# that empty file is not a log: close the descriptor and remove it when we
-# created it, so a refused write leaves the path as it was.
-log_existed=0
-[ -e "$logfile" ] && log_existed=1
-exec 9>>"$logfile"
+# not written. The script never appends unlocked. The header check happens
+# under that lock so two writers that start on an empty log cannot both see
+# it empty and both write a header.
 lockdir="$logfile.lock"
+flockfile="$logfile.flock"
 acquire() {
   mkdir "$lockdir" 2>/dev/null || return 1
   trap 'rm -rf "$lockdir"' EXIT
   printf '%s\n' "$$" > "$lockdir/pid"
 }
 locked=0
-if command -v flock >/dev/null 2>&1 && flock 9 2>/dev/null; then
-  locked=1
-else
+if command -v flock >/dev/null 2>&1; then
+  exec 8>>"$flockfile"
+  if flock 8 2>/dev/null; then
+    locked=1
+  else
+    exec 8>&-
+  fi
+fi
+if [ "$locked" -eq 0 ]; then
   # A waiter killed between mkdir and rmdir of the takeover mutex used to
   # leave it behind, so the next mkdir failed and a dead lock could never
   # be taken over. Drop that leftover before waiting — not after, where
@@ -137,14 +140,11 @@ else
     done
   fi
   if [ "$locked" -eq 0 ]; then
-    if [ "$log_existed" -eq 0 ]; then
-      exec 9>&-
-      rm -f "$logfile"
-    fi
     printf 'runlog: %s is locked by %s (pid %s) and nothing was written. Remove that directory only once you know the writer is gone.\n' "$logfile" "$lockdir" "${holder:-unknown}" >&2
     exit 2
   fi
 fi
+exec 9>>"$logfile"
 if [ ! -s "$logfile" ]; then
   printf 'ts\tphase\tdecision\twhy\tevidence\tresult\n' >&9
 fi

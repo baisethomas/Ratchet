@@ -191,6 +191,61 @@ PATH="$shim:$PATH" concurrent "$cs" "stale lock then 40 writers"
 [ ! -d "$cs.lock" ] && ok || no "lock directory left behind after the stale-lock takeover"
 [ ! -d "$cs.lock.takeover" ] && ok || no "takeover directory left behind after the stale-lock takeover"
 
+echo "== a timed-out waiter must not unlink a concurrent holder's log =="
+# Codex/Ternary schedule on the mkdir fallback. Pin it so the waiter samples
+# a missing log (log_existed=0 on 3d57180) and later times out while the
+# holder still owns the lock: hold the lock ourselves, start the waiter,
+# SIGSTOP it in its wait loop, drop our lock, start a holder that stalls at
+# date, then CONT the waiter. The holder's row must still be on disk.
+race="$tmp/race-unlink.tsv"
+raceshim="$tmp/race-shim"; mkdir "$raceshim"
+printf '#!/bin/sh\nexit 1\n' > "$raceshim/flock"; chmod +x "$raceshim/flock"
+reald=$(command -v date)
+printf '#!/bin/sh\nsleep 6\nexec %s "$@"\n' "$reald" > "$raceshim/date"; chmod +x "$raceshim/date"
+mkdir "$race.lock"; printf '%s\n' "$$" > "$race.lock/pid"
+PATH="$raceshim:$PATH" "$log" "$race" waiter "waiter-row" why evidence open 2>"$tmp/race-waiter.err" & waiterpid=$!
+for _ in $(seq 40); do
+  kill -0 "$waiterpid" 2>/dev/null || break
+  [ -e "$race" ] && break
+  sleep 0.05
+done
+sleep 0.2
+kill -STOP "$waiterpid" 2>/dev/null || no "could not SIGSTOP the waiter"
+rm -rf "$race.lock"
+PATH="$raceshim:$PATH" "$log" "$race" holder "holder-row" why evidence open & holderpid=$!
+for _ in $(seq 80); do
+  [ -d "$race.lock" ] && break
+  sleep 0.05
+done
+[ -d "$race.lock" ] && ok || no "holder never acquired the mkdir lock"
+kill -CONT "$waiterpid" 2>/dev/null || no "could not SIGCONT the waiter"
+wait "$waiterpid"; waiterrc=$?
+wait "$holderpid"; holderrc=$?
+[ "$waiterrc" -eq 2 ] && ok || no "waiter should time out with exit 2 (got $waiterrc)"
+[ "$holderrc" -eq 0 ] && ok || no "holder should exit 0 (got $holderrc)"
+[ -e "$race" ] && ok || no "timed-out waiter unlinked the concurrent holder's log"
+grep -q 'holder-row' "$race" 2>/dev/null && ok || no "holder's row did not survive"
+! grep -q 'waiter-row' "$race" 2>/dev/null && ok || no "timed-out waiter still wrote a row"
+[ ! -d "$race.lock" ] && ok || no "holder left its lock directory behind"
+[ ! -d "$race.lock.takeover" ] && ok || no "race left a takeover directory behind"
+
+echo "== flock path does not create the log before it holds the sidecar lock =="
+if command -v flock >/dev/null 2>&1 && command -v timeout >/dev/null 2>&1; then
+  flocklog="$tmp/flock-before-open.tsv"
+  exec 7>>"$flocklog.flock"
+  if flock -n 7; then
+    timeout 1 "$log" "$flocklog" p d w e r >/dev/null 2>&1
+    [ $? -ne 0 ] && ok || no "runlog should not finish while the sidecar flock is held"
+    [ ! -e "$flocklog" ] && ok || no "flock path created the log before holding the lock"
+  else
+    no "could not hold the sidecar flock"
+  fi
+  exec 7>&-
+  rm -f "$flocklog.flock"
+else
+  echo "SKIP: flock or timeout not installed; flock-before-open not exercised"
+fi
+
 echo "== a missing parent directory is created =="
 "$log" "$tmp/deep/er/run.tsv" p d w e r && [ -s "$tmp/deep/er/run.tsv" ] && ok || no "parent directory was not created"
 
