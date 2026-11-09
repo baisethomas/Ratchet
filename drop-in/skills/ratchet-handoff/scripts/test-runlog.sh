@@ -89,11 +89,12 @@ echo "== non-ASCII leading whitespace before = + - @ \" is still formula-scrubbe
 #   U+202F NARROW NO-BREAK SPACE / U+205F MEDIUM MATHEMATICAL SPACE
 #   U+3000 IDEOGRAPHIC SPACE — CJK
 #   U+FEFF BOM / ZERO WIDTH NO-BREAK SPACE — UTF-8 BOM on a cell
+# Same UTF-8 bytes as uni_bytes below: $'\uXXXX' is locale-dependent.
 uni_prefixes=(
-  $'\u00a0' $'\u1680'
-  $'\u2000' $'\u2001' $'\u2002' $'\u2003' $'\u2004' $'\u2005'
-  $'\u2006' $'\u2007' $'\u2008' $'\u2009' $'\u200a' $'\u200b'
-  $'\u2028' $'\u2029' $'\u202f' $'\u205f' $'\u3000' $'\ufeff'
+  $'\xc2\xa0' $'\xe1\x9a\x80'
+  $'\xe2\x80\x80' $'\xe2\x80\x81' $'\xe2\x80\x82' $'\xe2\x80\x83' $'\xe2\x80\x84' $'\xe2\x80\x85'
+  $'\xe2\x80\x86' $'\xe2\x80\x87' $'\xe2\x80\x88' $'\xe2\x80\x89' $'\xe2\x80\x8a' $'\xe2\x80\x8b'
+  $'\xe2\x80\xa8' $'\xe2\x80\xa9' $'\xe2\x80\xaf' $'\xe2\x81\x9f' $'\xe3\x80\x80' $'\xef\xbb\xbf'
 )
 n=0
 for prefix in "${uni_prefixes[@]}"; do
@@ -107,8 +108,8 @@ for prefix in "${uni_prefixes[@]}"; do
   done
 done
 # The same characters in front of ordinary text are not a formula.
-"$log" "$f" phase $'\u00a0'"not a formula" why evidence open
-[ "$(tail -1 "$f" | cut -f3)" = $'\u00a0'"not a formula" ] && ok || no "a leading NBSP on a non-formula cell was altered"
+"$log" "$f" phase $'\xc2\xa0'"not a formula" why evidence open
+[ "$(tail -1 "$f" | cut -f3)" = $'\xc2\xa0'"not a formula" ] && ok || no "a leading NBSP on a non-formula cell was altered"
 
 echo "== Unicode formula-prefix scrub is locale-independent (C and UTF-8) =="
 # bash $'\uXXXX' is left as a literal under LC_ALL=C, so the scrub must match
