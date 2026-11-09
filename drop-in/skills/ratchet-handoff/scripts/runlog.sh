@@ -113,14 +113,31 @@ fi
 if [ "$locked" -eq 0 ]; then
   # A waiter killed between mkdir and rmdir of the takeover mutex used to
   # leave it behind, so the next mkdir failed and a dead lock could never
-  # be taken over. Drop that leftover before waiting — not after, where
-  # reclaiming an empty mutex would steal it from a concurrent winner who
-  # has not yet written a pid. An empty leftover, or one whose holder is
-  # dead, is from a crash; a live holder keeps the mutex.
+  # be taken over. Reap only when the mutex is provably stale: its recorded
+  # pid is dead, or it has no pid and its mtime is older than
+  # TAKEOVER_STALE_S. mkdir-to-pid-write is sub-millisecond; 8s is well
+  # beyond that window, so a live waiter between those two steps is not
+  # reaped, and a crashed waiter does not wedge takeover forever. Do not
+  # reap after the wait: that would steal an empty mutex from a concurrent
+  # winner who has not yet written a pid.
+  TAKEOVER_STALE_S=8
+  takeover_age_s() {
+    local m now
+    now=$(date +%s)
+    m=$(stat -c '%Y' "$1" 2>/dev/null) || m=$(stat -f '%m' "$1" 2>/dev/null) || return 1
+    echo $((now - m))
+  }
   if [ -d "$lockdir.takeover" ]; then
     tpid=$(cat "$lockdir.takeover/pid" 2>/dev/null || true)
-    if [ -z "$tpid" ] || ! kill -0 "$tpid" 2>/dev/null; then
-      rm -rf "$lockdir.takeover"
+    if [ -n "$tpid" ]; then
+      if ! kill -0 "$tpid" 2>/dev/null; then
+        rm -rf "$lockdir.takeover"
+      fi
+    else
+      tage=$(takeover_age_s "$lockdir.takeover" || echo 0)
+      if [ "$tage" -ge "$TAKEOVER_STALE_S" ]; then
+        rm -rf "$lockdir.takeover"
+      fi
     fi
   fi
   for _ in $(seq 40); do

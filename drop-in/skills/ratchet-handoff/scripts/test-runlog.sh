@@ -219,16 +219,37 @@ PATH="$shim:$PATH" "$log" "$stale" p d w e r 2>/dev/null; rc=$?
 [ $(( $(date +%s) - start )) -le 10 ] && ok || no "stale lock wait exceeded the bound"
 # A takeover dir left behind by a crashed waiter must not block the next
 # takeover of a dead lock. mkdir of the serializer would otherwise fail and
-# the write would be refused forever.
+# the write would be refused forever. Age it past the stale bound so a
+# fresh empty mutex (a live waiter between mkdir and pid write) is not
+# treated the same as a leftover.
 left="$tmp/leftover-takeover.tsv"
 mkdir "$left.lock"; printf '%s\n' "$deadpid" > "$left.lock/pid"
 mkdir "$left.lock.takeover"
+python3 -c 'import os,time,sys; t=time.time()-10; os.utime(sys.argv[1], (t,t))' "$left.lock.takeover"
 start=$(date +%s)
 PATH="$shim:$PATH" "$log" "$left" p d w e r 2>/dev/null; rc=$?
 [ "$rc" -eq 0 ] && [ "$(wc -l < "$left")" -eq 2 ] && ok || no "leftover takeover dir should not block a dead-holder takeover (exit $rc)"
 [ ! -d "$left.lock" ] && ok || no "lock directory left behind after reclaiming a leftover takeover"
 [ ! -d "$left.lock.takeover" ] && ok || no "reclaimed takeover directory was not removed"
 [ $(( $(date +%s) - start )) -le 10 ] && ok || no "leftover-takeover wait exceeded the bound"
+# Dead pid in the takeover mutex is stale even with a fresh mtime.
+leftdead="$tmp/leftover-takeover-deadpid.tsv"
+mkdir "$leftdead.lock"; printf '%s\n' "$deadpid" > "$leftdead.lock/pid"
+mkdir "$leftdead.lock.takeover"; printf '%s\n' "$deadpid" > "$leftdead.lock.takeover/pid"
+PATH="$shim:$PATH" "$log" "$leftdead" p d w e r 2>/dev/null; rc=$?
+[ "$rc" -eq 0 ] && [ "$(wc -l < "$leftdead")" -eq 2 ] && ok || no "dead-pid takeover dir should be reclaimed (exit $rc)"
+[ ! -d "$leftdead.lock.takeover" ] && ok || no "dead-pid takeover directory was not removed"
+# A live waiter that has mkdir'd the takeover mutex but not yet written a
+# pid must not have that mutex reaped. Reaping it lets a second writer
+# steal takeover serialization and append while the first still owns it.
+live="$tmp/live-takeover.tsv"
+mkdir "$live.lock"; printf '%s\n' "$deadpid" > "$live.lock/pid"
+mkdir "$live.lock.takeover"
+PATH="$shim:$PATH" "$log" "$live" p d w e r 2>/dev/null; rc=$?
+[ "$rc" -eq 2 ] && ok || no "a fresh empty takeover mutex must not be reaped so a second writer can steal it (exit $rc)"
+[ -d "$live.lock.takeover" ] && ok || no "a fresh empty takeover mutex was removed while a live waiter could still own it"
+[ ! -e "$live" ] && ok || no "a second writer wrote while a live takeover mutex existed"
+rm -rf "$live.lock" "$live.lock.takeover"
 held="$tmp/held.tsv"; mkdir "$held.lock"; printf '%s\n' "$$" > "$held.lock/pid"   # this test shell is alive
 PATH="$shim:$PATH" "$log" "$held" p d w e r 2>"$tmp/held.err"; rc=$?
 [ "$rc" -eq 2 ] && ok || no "a lock held by a live pid should refuse with exit 2 (got $rc)"
