@@ -159,7 +159,20 @@ start=$(date +%s)
 PATH="$shim:$PATH" "$log" "$stale" p d w e r 2>/dev/null; rc=$?
 [ "$rc" -eq 0 ] && [ "$(wc -l < "$stale")" -eq 2 ] && ok || no "dead-holder lock should be taken over and the row written (exit $rc)"
 [ ! -d "$stale.lock" ] && ok || no "taken-over lock was not released"
+[ ! -d "$stale.lock.takeover" ] && ok || no "takeover directory left behind after a takeover"
 [ $(( $(date +%s) - start )) -le 10 ] && ok || no "stale lock wait exceeded the bound"
+# A takeover dir left behind by a crashed waiter must not block the next
+# takeover of a dead lock. mkdir of the serializer would otherwise fail and
+# the write would be refused forever.
+left="$tmp/leftover-takeover.tsv"
+mkdir "$left.lock"; printf '%s\n' "$deadpid" > "$left.lock/pid"
+mkdir "$left.lock.takeover"
+start=$(date +%s)
+PATH="$shim:$PATH" "$log" "$left" p d w e r 2>/dev/null; rc=$?
+[ "$rc" -eq 0 ] && [ "$(wc -l < "$left")" -eq 2 ] && ok || no "leftover takeover dir should not block a dead-holder takeover (exit $rc)"
+[ ! -d "$left.lock" ] && ok || no "lock directory left behind after reclaiming a leftover takeover"
+[ ! -d "$left.lock.takeover" ] && ok || no "reclaimed takeover directory was not removed"
+[ $(( $(date +%s) - start )) -le 10 ] && ok || no "leftover-takeover wait exceeded the bound"
 held="$tmp/held.tsv"; mkdir "$held.lock"; printf '%s\n' "$$" > "$held.lock/pid"   # this test shell is alive
 PATH="$shim:$PATH" "$log" "$held" p d w e r 2>"$tmp/held.err"; rc=$?
 [ "$rc" -eq 2 ] && ok || no "a lock held by a live pid should refuse with exit 2 (got $rc)"
@@ -176,6 +189,7 @@ echo "== concurrent writers behind a stale lock still produce exactly one header
 cs="$tmp/concurrent-stale.tsv"; mkdir "$cs.lock"; printf '%s\n' "$deadpid" > "$cs.lock/pid"
 PATH="$shim:$PATH" concurrent "$cs" "stale lock then 40 writers"
 [ ! -d "$cs.lock" ] && ok || no "lock directory left behind after the stale-lock takeover"
+[ ! -d "$cs.lock.takeover" ] && ok || no "takeover directory left behind after the stale-lock takeover"
 
 echo "== a missing parent directory is created =="
 "$log" "$tmp/deep/er/run.tsv" p d w e r && [ -s "$tmp/deep/er/run.tsv" ] && ok || no "parent directory was not created"

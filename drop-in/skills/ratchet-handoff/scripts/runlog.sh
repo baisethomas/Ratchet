@@ -109,9 +109,27 @@ else
     # again under it, so several waiters that all saw the same dead holder
     # remove the stale lock once and never remove a lock a new live holder
     # created in the meantime.
-    if [ -n "$holder" ] && ! kill -0 "$holder" 2>/dev/null && mkdir "$lockdir.takeover" 2>/dev/null; then
-      [ "$(cat "$lockdir/pid" 2>/dev/null || true)" = "$holder" ] && rm -rf "$lockdir"
-      rmdir "$lockdir.takeover" 2>/dev/null || true
+    if [ -n "$holder" ] && ! kill -0 "$holder" 2>/dev/null; then
+      # The takeover mutex is a second directory. A waiter killed between
+      # mkdir and rmdir used to leave it behind, and the next mkdir then
+      # failed forever. Reclaim it when it has no live holder: we write
+      # our pid into it immediately, so an empty leftover is from a crash
+      # (this version or an older one) after the 2s wait above.
+      took=0
+      if mkdir "$lockdir.takeover" 2>/dev/null; then
+        took=1
+      else
+        tpid=$(cat "$lockdir.takeover/pid" 2>/dev/null || true)
+        if [ -z "$tpid" ] || ! kill -0 "$tpid" 2>/dev/null; then
+          rm -rf "$lockdir.takeover"
+          mkdir "$lockdir.takeover" 2>/dev/null && took=1
+        fi
+      fi
+      if [ "$took" -eq 1 ]; then
+        printf '%s\n' "$$" > "$lockdir.takeover/pid"
+        [ "$(cat "$lockdir/pid" 2>/dev/null || true)" = "$holder" ] && rm -rf "$lockdir"
+        rm -rf "$lockdir.takeover"
+      fi
     fi
     for _ in $(seq 40); do
       acquire && { locked=1; break; }
