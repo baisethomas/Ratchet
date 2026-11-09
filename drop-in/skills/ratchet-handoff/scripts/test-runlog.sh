@@ -76,6 +76,40 @@ done
 "$log" "$f" phase " not a formula" why evidence open
 [ "$(tail -1 "$f" | cut -f3)" = " not a formula" ] && ok || no "a leading space on a non-formula cell was altered"
 
+echo "== non-ASCII leading whitespace before = + - @ \" is still formula-scrubbed =="
+# ASCII-space stripping left these through. A sheet that trims Unicode spaces
+# (or a reviewer who sees an "empty" prefix) then parses = + - @ " as a formula.
+# Cover the Unicode space/BOM characters that actually show up as a leading
+# prefix, not every Cf/bidi/homoglyph attack (different class).
+#   U+00A0 NO-BREAK SPACE — HTML/Word paste
+#   U+1680 OGHAM SPACE MARK — Zs
+#   U+2000–U+200A — en quad through hair space
+#   U+200B ZERO WIDTH SPACE — invisible prefix
+#   U+2028 LINE SEPARATOR / U+2029 PARAGRAPH SEPARATOR
+#   U+202F NARROW NO-BREAK SPACE / U+205F MEDIUM MATHEMATICAL SPACE
+#   U+3000 IDEOGRAPHIC SPACE — CJK
+#   U+FEFF BOM / ZERO WIDTH NO-BREAK SPACE — UTF-8 BOM on a cell
+uni_prefixes=(
+  $'\u00a0' $'\u1680'
+  $'\u2000' $'\u2001' $'\u2002' $'\u2003' $'\u2004' $'\u2005'
+  $'\u2006' $'\u2007' $'\u2008' $'\u2009' $'\u200a' $'\u200b'
+  $'\u2028' $'\u2029' $'\u202f' $'\u205f' $'\u3000' $'\ufeff'
+)
+n=0
+for prefix in "${uni_prefixes[@]}"; do
+  for char in '=' '+' '-' '@' '"'; do
+    n=$((n + 1))
+    val="${prefix}${char}Upayload${n}"
+    "$log" "$f" "u${n}" "$val" "why${n}" "ev${n}" "open" || no "append of unicode-ws formula $n exited non-zero"
+    cell=$(tail -1 "$f" | cut -f3)
+    expected="'${val}"
+    [ "$cell" = "$expected" ] && ok || no "unicode leading ws before $char not scrubbed (case $n): got $(printf %q "$cell")"
+  done
+done
+# The same characters in front of ordinary text are not a formula.
+"$log" "$f" phase $'\u00a0'"not a formula" why evidence open
+[ "$(tail -1 "$f" | cut -f3)" = $'\u00a0'"not a formula" ] && ok || no "a leading NBSP on a non-formula cell was altered"
+
 echo "== wrong argument count exits 2 and writes nothing =="
 before=$(wc -l < "$f")
 "$log" "$f" only two 2>/dev/null; [ $? -eq 2 ] && ok || no "too few arguments should exit 2"

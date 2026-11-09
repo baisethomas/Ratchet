@@ -21,15 +21,23 @@
 #     replaced with spaces.
 #   - a cell whose first non-space character is = + - @ or a double quote is
 #     prefixed with a single quote. Tabs and CR are already turned into spaces,
-#     so a tab or CR before =cmd still matches after flattening. The log is meant
-#     to be opened in a spreadsheet, and evidence cells can carry text an agent
-#     did not write (PR titles, file names, tool output); none of it may become
-#     a formula when the reviewer opens the file. A sheet that trims leading
-#     whitespace before parsing would otherwise run the formula. The double
-#     quote is included because a TSV importer strips enclosing quotes before
-#     it looks at the cell, so "=1+1" would decode to =1+1 and run; with the
-#     prefix the cell no longer starts with a quote, so the importer leaves it
-#     alone and the sheet reads it as text.
+#     so a tab or CR before =cmd still matches after flattening. "Space" here
+#     is ASCII space plus the Unicode whitespace/BOM characters a trim-before-
+#     parse sheet (or a visually empty prefix) will skip, leaving a formula:
+#     U+00A0 NBSP (HTML/Word paste), U+1680 Ogham space, U+2000–U+200A (en
+#     quad through hair space), U+200B zero-width space (invisible), U+2028
+#     line separator, U+2029 paragraph separator, U+202F NNBSP, U+205F
+#     medium mathematical space, U+3000 ideographic space (CJK), U+FEFF BOM.
+#     Bidi overrides and homoglyphs are a different attack and are not
+#     stripped. The log is meant to be opened in a spreadsheet, and evidence
+#     cells can carry text an agent did not write (PR titles, file names, tool
+#     output); none of it may become a formula when the reviewer opens the
+#     file. A sheet that trims leading whitespace before parsing would
+#     otherwise run the formula. The double quote is included because a TSV
+#     importer strips enclosing quotes before it looks at the cell, so "=1+1"
+#     would decode to =1+1 and run; with the prefix the cell no longer starts
+#     with a quote, so the importer leaves it alone and the sheet reads it as
+#     text.
 #
 # Rewritten from pstack's show-me-your-work/scripts/log.sh (MIT, Lauren Tan),
 # keeping its formula-injection scrub. See ../../CREDITS.md.
@@ -122,9 +130,36 @@ fi
 clean() {
   local v stripped
   v=$(printf '%s' "$1" | tr '\t\n\r' '   ')
-  # First non-space character, not the first byte: leading spaces (including
-  # tabs and CR already flattened above) must not bypass the formula prefix.
-  stripped="${v#"${v%%[! ]*}"}"
+  # First non-space character, not the first byte: leading ASCII spaces
+  # (tabs and CR already flattened above) and the Unicode whitespace/BOM
+  # listed in the header must not bypass the formula prefix.
+  stripped="$v"
+  while :; do
+    case "$stripped" in
+      ' '*) stripped="${stripped# }" ;;
+      $'\u00a0'*) stripped="${stripped#$'\u00a0'}" ;;
+      $'\u1680'*) stripped="${stripped#$'\u1680'}" ;;
+      $'\u2000'*) stripped="${stripped#$'\u2000'}" ;;
+      $'\u2001'*) stripped="${stripped#$'\u2001'}" ;;
+      $'\u2002'*) stripped="${stripped#$'\u2002'}" ;;
+      $'\u2003'*) stripped="${stripped#$'\u2003'}" ;;
+      $'\u2004'*) stripped="${stripped#$'\u2004'}" ;;
+      $'\u2005'*) stripped="${stripped#$'\u2005'}" ;;
+      $'\u2006'*) stripped="${stripped#$'\u2006'}" ;;
+      $'\u2007'*) stripped="${stripped#$'\u2007'}" ;;
+      $'\u2008'*) stripped="${stripped#$'\u2008'}" ;;
+      $'\u2009'*) stripped="${stripped#$'\u2009'}" ;;
+      $'\u200a'*) stripped="${stripped#$'\u200a'}" ;;
+      $'\u200b'*) stripped="${stripped#$'\u200b'}" ;;
+      $'\u2028'*) stripped="${stripped#$'\u2028'}" ;;
+      $'\u2029'*) stripped="${stripped#$'\u2029'}" ;;
+      $'\u202f'*) stripped="${stripped#$'\u202f'}" ;;
+      $'\u205f'*) stripped="${stripped#$'\u205f'}" ;;
+      $'\u3000'*) stripped="${stripped#$'\u3000'}" ;;
+      $'\ufeff'*) stripped="${stripped#$'\ufeff'}" ;;
+      *) break ;;
+    esac
+  done
   case "$stripped" in
     =*|+*|-*|@*|\"*) printf "'%s" "$v" ;;
     *) printf '%s' "$v" ;;
