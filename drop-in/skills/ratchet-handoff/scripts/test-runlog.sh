@@ -110,6 +110,62 @@ done
 "$log" "$f" phase $'\u00a0'"not a formula" why evidence open
 [ "$(tail -1 "$f" | cut -f3)" = $'\u00a0'"not a formula" ] && ok || no "a leading NBSP on a non-formula cell was altered"
 
+echo "== Unicode formula-prefix scrub is locale-independent (C and UTF-8) =="
+# bash $'\uXXXX' is left as a literal under LC_ALL=C, so the scrub must match
+# explicit UTF-8 bytes. Hex escapes produce those bytes in every locale.
+uni_bytes=(
+  $'\xc2\xa0'                               # U+00A0 NBSP
+  $'\xe1\x9a\x80'                           # U+1680 OGHAM SPACE MARK
+  $'\xe2\x80\x80' $'\xe2\x80\x81' $'\xe2\x80\x82' $'\xe2\x80\x83'  # U+2000–U+2003
+  $'\xe2\x80\x84' $'\xe2\x80\x85' $'\xe2\x80\x86' $'\xe2\x80\x87'  # U+2004–U+2007
+  $'\xe2\x80\x88' $'\xe2\x80\x89' $'\xe2\x80\x8a' $'\xe2\x80\x8b'  # U+2008–U+200B
+  $'\xe2\x80\xa8' $'\xe2\x80\xa9'            # U+2028 LINE SEP / U+2029 PARA SEP
+  $'\xe2\x80\xaf' $'\xe2\x81\x9f'            # U+202F NNBSP / U+205F MMSP
+  $'\xe3\x80\x80'                           # U+3000 IDEOGRAPHIC SPACE
+  $'\xef\xbb\xbf'                           # U+FEFF BOM
+)
+n=0
+for prefix in "${uni_bytes[@]}"; do
+  n=$((n + 1))
+  val="${prefix}=Cpayload${n}"
+  LC_ALL=C "$log" "$f" "c${n}" "$val" "why${n}" "ev${n}" open || no "C-locale unicode append $n exited non-zero"
+  cell=$(tail -1 "$f" | cut -f3)
+  [ "$cell" = "'${val}" ] && ok || no "C-locale unicode leading ws before = not scrubbed (case $n): got $(printf %q "$cell")"
+done
+nbsp=$'\xc2\xa0'
+for char in '+' '-' '@' '"'; do
+  n=$((n + 1))
+  val="${nbsp}${char}Cpayload${n}"
+  LC_ALL=C "$log" "$f" "c${n}" "$val" "why${n}" "ev${n}" open || no "C-locale NBSP-before-$char append exited non-zero"
+  cell=$(tail -1 "$f" | cut -f3)
+  [ "$cell" = "'${val}" ] && ok || no "C-locale NBSP before $char not scrubbed: got $(printf %q "$cell")"
+done
+utf8_locale=
+for loc in C.UTF-8 C.utf8 en_US.UTF-8 en_US.utf8; do
+  if LC_ALL="$loc" locale charmap 2>/dev/null | grep -qi '^utf-8$'; then
+    utf8_locale=$loc
+    break
+  fi
+done
+if [ -z "$utf8_locale" ] && command -v locale >/dev/null 2>&1; then
+  loc=$(locale -a 2>/dev/null | grep -iE 'utf-?8' | head -1)
+  if [ -n "$loc" ] && LC_ALL="$loc" locale charmap 2>/dev/null | grep -qi '^utf-8$'; then
+    utf8_locale=$loc
+  fi
+fi
+if [ -n "$utf8_locale" ]; then
+  n=0
+  for prefix in "${uni_bytes[@]}"; do
+    n=$((n + 1))
+    val="${prefix}=Upayload${n}"
+    LC_ALL="$utf8_locale" "$log" "$f" "u8${n}" "$val" "why${n}" "ev${n}" open || no "UTF-8 locale ($utf8_locale) unicode append $n exited non-zero"
+    cell=$(tail -1 "$f" | cut -f3)
+    [ "$cell" = "'${val}" ] && ok || no "UTF-8 locale unicode leading ws before = not scrubbed (case $n): got $(printf %q "$cell")"
+  done
+else
+  echo "SKIP: no UTF-8 locale on this runner; C-locale Unicode cases still ran"
+fi
+
 echo "== wrong argument count exits 2 and writes nothing =="
 before=$(wc -l < "$f")
 "$log" "$f" only two 2>/dev/null; [ $? -eq 2 ] && ok || no "too few arguments should exit 2"

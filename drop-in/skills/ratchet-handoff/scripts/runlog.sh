@@ -157,28 +157,30 @@ clean() {
   # listed in the header must not bypass the formula prefix.
   stripped="$v"
   while :; do
+    # Hex byte sequences, not $'\uXXXX': bash leaves Unicode escapes
+    # literal under LC_ALL=C, so those patterns would never match.
     case "$stripped" in
       ' '*) stripped="${stripped# }" ;;
-      $'\u00a0'*) stripped="${stripped#$'\u00a0'}" ;;
-      $'\u1680'*) stripped="${stripped#$'\u1680'}" ;;
-      $'\u2000'*) stripped="${stripped#$'\u2000'}" ;;
-      $'\u2001'*) stripped="${stripped#$'\u2001'}" ;;
-      $'\u2002'*) stripped="${stripped#$'\u2002'}" ;;
-      $'\u2003'*) stripped="${stripped#$'\u2003'}" ;;
-      $'\u2004'*) stripped="${stripped#$'\u2004'}" ;;
-      $'\u2005'*) stripped="${stripped#$'\u2005'}" ;;
-      $'\u2006'*) stripped="${stripped#$'\u2006'}" ;;
-      $'\u2007'*) stripped="${stripped#$'\u2007'}" ;;
-      $'\u2008'*) stripped="${stripped#$'\u2008'}" ;;
-      $'\u2009'*) stripped="${stripped#$'\u2009'}" ;;
-      $'\u200a'*) stripped="${stripped#$'\u200a'}" ;;
-      $'\u200b'*) stripped="${stripped#$'\u200b'}" ;;
-      $'\u2028'*) stripped="${stripped#$'\u2028'}" ;;
-      $'\u2029'*) stripped="${stripped#$'\u2029'}" ;;
-      $'\u202f'*) stripped="${stripped#$'\u202f'}" ;;
-      $'\u205f'*) stripped="${stripped#$'\u205f'}" ;;
-      $'\u3000'*) stripped="${stripped#$'\u3000'}" ;;
-      $'\ufeff'*) stripped="${stripped#$'\ufeff'}" ;;
+      $'\xc2\xa0'*) stripped="${stripped#$'\xc2\xa0'}" ;;                 # U+00A0
+      $'\xe1\x9a\x80'*) stripped="${stripped#$'\xe1\x9a\x80'}" ;;         # U+1680
+      $'\xe2\x80\x80'*) stripped="${stripped#$'\xe2\x80\x80'}" ;;         # U+2000
+      $'\xe2\x80\x81'*) stripped="${stripped#$'\xe2\x80\x81'}" ;;         # U+2001
+      $'\xe2\x80\x82'*) stripped="${stripped#$'\xe2\x80\x82'}" ;;         # U+2002
+      $'\xe2\x80\x83'*) stripped="${stripped#$'\xe2\x80\x83'}" ;;         # U+2003
+      $'\xe2\x80\x84'*) stripped="${stripped#$'\xe2\x80\x84'}" ;;         # U+2004
+      $'\xe2\x80\x85'*) stripped="${stripped#$'\xe2\x80\x85'}" ;;         # U+2005
+      $'\xe2\x80\x86'*) stripped="${stripped#$'\xe2\x80\x86'}" ;;         # U+2006
+      $'\xe2\x80\x87'*) stripped="${stripped#$'\xe2\x80\x87'}" ;;         # U+2007
+      $'\xe2\x80\x88'*) stripped="${stripped#$'\xe2\x80\x88'}" ;;         # U+2008
+      $'\xe2\x80\x89'*) stripped="${stripped#$'\xe2\x80\x89'}" ;;         # U+2009
+      $'\xe2\x80\x8a'*) stripped="${stripped#$'\xe2\x80\x8a'}" ;;         # U+200A
+      $'\xe2\x80\x8b'*) stripped="${stripped#$'\xe2\x80\x8b'}" ;;         # U+200B
+      $'\xe2\x80\xa8'*) stripped="${stripped#$'\xe2\x80\xa8'}" ;;         # U+2028
+      $'\xe2\x80\xa9'*) stripped="${stripped#$'\xe2\x80\xa9'}" ;;         # U+2029
+      $'\xe2\x80\xaf'*) stripped="${stripped#$'\xe2\x80\xaf'}" ;;         # U+202F
+      $'\xe2\x81\x9f'*) stripped="${stripped#$'\xe2\x81\x9f'}" ;;         # U+205F
+      $'\xe3\x80\x80'*) stripped="${stripped#$'\xe3\x80\x80'}" ;;         # U+3000
+      $'\xef\xbb\xbf'*) stripped="${stripped#$'\xef\xbb\xbf'}" ;;         # U+FEFF
       *) break ;;
     esac
   done
