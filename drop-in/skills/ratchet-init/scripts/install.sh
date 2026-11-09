@@ -199,6 +199,6 @@ fi
 printf '\n%s added, %s skipped\n' "$added" "$skipped"
 printf 'FROM  %s\n' "$from"
 if [ "$claude" -eq 1 ]; then
-  printf 'NEXT  merge the "hooks" block of %s into .claude/settings.json, fill CHECKS in .claude/hooks/check-on-stop.sh, then run .claude/hooks/test-hooks.sh\n' "$from/claude-code-hooks-settings.json"
+  printf 'NEXT  merge the "hooks" block of %s into .claude/settings.json (JSON cannot hold comments; hooks require jq or node — see that file'\''s _readme), fill CHECKS in .claude/hooks/check-on-stop.sh, then run .claude/hooks/test-hooks.sh\n' "$from/claude-code-hooks-settings.json"
 fi
 exit 0

@@ -44,6 +44,11 @@ done
 "$repo/.claude/skills/ratchet-bugfix/scripts/test-rrr.sh" >/dev/null 2>&1 && ok || no "installed rrr suite fails when run through .claude/skills"
 (cd "$repo" && .claude/hooks/test-hooks.sh >/dev/null 2>&1) && ok || no "installed hooks suite fails"
 [ ! -e "$repo/.claude/settings.json" ] && ok || no "installer wrote .claude/settings.json; merging is the caller's job"
+# settings.json is JSON (no comments). The installer does not write it; the
+# NEXT line and the init skill must carry the jq/node requirement that
+# _readme would have held, because that key is dropped on merge.
+printf '%s' "$out" | grep -qi 'jq' && ok || no "fresh install NEXT does not mention the jq/node requirement"
+grep -qi jq "$dropin/skills/ratchet-init/SKILL.md" && grep -qi node "$dropin/skills/ratchet-init/SKILL.md" && grep -qi 'cannot hold comments' "$dropin/skills/ratchet-init/SKILL.md" && ok || no "ratchet-init SKILL.md does not document jq/node (and that settings.json cannot hold comments)"
 
 echo "== second run changes nothing =="
 before="$(snapshot "$repo")"
