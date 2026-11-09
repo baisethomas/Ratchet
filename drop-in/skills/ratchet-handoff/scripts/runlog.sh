@@ -87,6 +87,11 @@ logdir=$(dirname "$logfile")
 # not written. The script never appends unlocked. The header check happens
 # under that lock so two writers that start on an empty log cannot both see
 # it empty and both write a header.
+# After the sidecar flock is held and the log is open, also flock the log
+# descriptor. 1.3.1 (efb2dc7) flocks only that descriptor, never the sidecar,
+# so a mixed-version pair serializes on fd 9 and cannot deadlock: the old
+# writer never waits on the sidecar, and the new writer waits on fd 9 only
+# after it already holds the sidecar.
 lockdir="$logfile.lock"
 flockfile="$logfile.flock"
 acquire() {
@@ -95,10 +100,12 @@ acquire() {
   printf '%s\n' "$$" > "$lockdir/pid"
 }
 locked=0
+locked_via_flock=0
 if command -v flock >/dev/null 2>&1; then
   exec 8>>"$flockfile"
   if flock 8 2>/dev/null; then
     locked=1
+    locked_via_flock=1
   else
     exec 8>&-
   fi
@@ -145,6 +152,11 @@ if [ "$locked" -eq 0 ]; then
   fi
 fi
 exec 9>>"$logfile"
+if [ "$locked_via_flock" -eq 1 ]; then
+  # Already hold the sidecar. flock 9 failing (a shim, a non-regular file)
+  # must not abort the write: same-version writers are already serialized.
+  flock 9 2>/dev/null || true
+fi
 if [ ! -s "$logfile" ]; then
   printf 'ts\tphase\tdecision\twhy\tevidence\tresult\n' >&9
 fi

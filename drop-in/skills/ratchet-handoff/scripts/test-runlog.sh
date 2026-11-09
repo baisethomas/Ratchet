@@ -302,6 +302,50 @@ else
   echo "SKIP: flock or timeout not installed; flock-before-open not exercised"
 fi
 
+echo "== a 1.3.2 flock writer serializes with an efb2dc7 flock-on-log writer =="
+# 1.3.1 (efb2dc7) flocks the log fd. 44f17b9 flocks only $logfile.flock, so a
+# delayed old holder and a new writer do not exclude each other. After the
+# fix, the new writer still takes the sidecar first (refused writes never
+# create the log) and then flock 9, which the old holder already holds.
+if command -v flock >/dev/null 2>&1 && command -v git >/dev/null 2>&1; then
+  mix="$tmp/mixed-version.tsv"
+  oldlog="$tmp/runlog-efb2dc7.sh"
+  repo=$(git -C "$here" rev-parse --show-toplevel 2>/dev/null || true)
+  if [ -z "$repo" ] || ! git -C "$repo" cat-file -e efb2dc7:drop-in/skills/ratchet-handoff/scripts/runlog.sh 2>/dev/null; then
+    echo "SKIP: efb2dc7 runlog.sh not in this git object store"
+  else
+    git -C "$repo" show efb2dc7:drop-in/skills/ratchet-handoff/scripts/runlog.sh > "$oldlog"
+    chmod +x "$oldlog"
+    mixshim="$tmp/mix-shim"; mkdir "$mixshim"
+    reald=$(command -v date)
+    printf '#!/bin/sh\nsleep 6\nexec %s "$@"\n' "$reald" > "$mixshim/date"; chmod +x "$mixshim/date"
+    PATH="$mixshim:$PATH" "$oldlog" "$mix" old "old-row" why evidence open & oldpid=$!
+    for _ in $(seq 80); do
+      [ -s "$mix" ] && break
+      sleep 0.05
+    done
+    [ -s "$mix" ] && ok || no "efb2dc7 holder never created the log"
+    "$log" "$mix" new "new-row" why evidence open & newpid=$!
+    sleep 1
+    if kill -0 "$oldpid" 2>/dev/null && kill -0 "$newpid" 2>/dev/null; then
+      ok
+    else
+      no "new writer finished while the efb2dc7 holder still held flock-on-log (not mutually exclusive)"
+    fi
+    wait "$newpid"; newrc=$?
+    wait "$oldpid"; oldrc=$?
+    [ "$oldrc" -eq 0 ] && ok || no "efb2dc7 holder should exit 0 (got $oldrc)"
+    [ "$newrc" -eq 0 ] && ok || no "1.3.2 writer should exit 0 after waiting (got $newrc)"
+    [ "$(grep -c '^ts	phase' "$mix")" -eq 1 ] && ok || no "mixed-version: expected exactly one header, got $(grep -c '^ts	phase' "$mix")"
+    grep -q 'old-row' "$mix" && ok || no "mixed-version: old-row missing"
+    grep -q 'new-row' "$mix" && ok || no "mixed-version: new-row missing"
+    awk -F'\t' 'NF!=6 {bad=1} END {exit bad}' "$mix" && ok || no "mixed-version: interleaved or partial row (a line did not have six cells)"
+    [ "$(wc -l < "$mix")" -eq 3 ] && ok || no "mixed-version: expected header plus two rows, got $(wc -l < "$mix")"
+  fi
+else
+  echo "SKIP: flock or git not installed; mixed-version flock test not exercised"
+fi
+
 echo "== a missing parent directory is created =="
 "$log" "$tmp/deep/er/run.tsv" p d w e r && [ -s "$tmp/deep/er/run.tsv" ] && ok || no "parent directory was not created"
 
