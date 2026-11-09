@@ -176,13 +176,13 @@ PATH="$shim:$PATH" "$log" "$left" p d w e r 2>/dev/null; rc=$?
 held="$tmp/held.tsv"; mkdir "$held.lock"; printf '%s\n' "$$" > "$held.lock/pid"   # this test shell is alive
 PATH="$shim:$PATH" "$log" "$held" p d w e r 2>"$tmp/held.err"; rc=$?
 [ "$rc" -eq 2 ] && ok || no "a lock held by a live pid should refuse with exit 2 (got $rc)"
-[ ! -s "$held" ] && ok || no "a refused write still appended a row"
+[ ! -e "$held" ] && ok || no "a refused write left an empty log (or appended a row)"
 grep -q "$held.lock" "$tmp/held.err" && ok || no "the refusal should name the lock directory"
 [ -d "$held.lock" ] && ok || no "a live holder's lock was removed"
 rm -rf "$held.lock"
 unknown="$tmp/unknown.tsv"; mkdir "$unknown.lock"   # no pid file: holder unknown
 PATH="$shim:$PATH" "$log" "$unknown" p d w e r 2>/dev/null; rc=$?
-[ "$rc" -eq 2 ] && [ ! -s "$unknown" ] && ok || no "a lock with no pid should refuse with exit 2 and write nothing (got $rc)"
+[ "$rc" -eq 2 ] && [ ! -e "$unknown" ] && ok || no "a lock with no pid should refuse with exit 2 and leave no log (got $rc)"
 rm -rf "$unknown.lock"
 
 echo "== concurrent writers behind a stale lock still produce exactly one header =="

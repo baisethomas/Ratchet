@@ -85,6 +85,11 @@ logdir=$(dirname "$logfile")
 # refuses the write with exit 2 and names the directory: a row that may have
 # interleaved with another writer is worse than a row the caller is told was
 # not written. The script never appends unlocked.
+# Opening the log in append mode creates it. If the lock is then refused,
+# that empty file is not a log: close the descriptor and remove it when we
+# created it, so a refused write leaves the path as it was.
+log_existed=0
+[ -e "$logfile" ] && log_existed=1
 exec 9>>"$logfile"
 lockdir="$logfile.lock"
 acquire() {
@@ -96,6 +101,18 @@ locked=0
 if command -v flock >/dev/null 2>&1 && flock 9 2>/dev/null; then
   locked=1
 else
+  # A waiter killed between mkdir and rmdir of the takeover mutex used to
+  # leave it behind, so the next mkdir failed and a dead lock could never
+  # be taken over. Drop that leftover before waiting — not after, where
+  # reclaiming an empty mutex would steal it from a concurrent winner who
+  # has not yet written a pid. An empty leftover, or one whose holder is
+  # dead, is from a crash; a live holder keeps the mutex.
+  if [ -d "$lockdir.takeover" ]; then
+    tpid=$(cat "$lockdir.takeover/pid" 2>/dev/null || true)
+    if [ -z "$tpid" ] || ! kill -0 "$tpid" 2>/dev/null; then
+      rm -rf "$lockdir.takeover"
+    fi
+  fi
   for _ in $(seq 40); do
     acquire && { locked=1; break; }
     sleep 0.05
@@ -109,27 +126,10 @@ else
     # again under it, so several waiters that all saw the same dead holder
     # remove the stale lock once and never remove a lock a new live holder
     # created in the meantime.
-    if [ -n "$holder" ] && ! kill -0 "$holder" 2>/dev/null; then
-      # The takeover mutex is a second directory. A waiter killed between
-      # mkdir and rmdir used to leave it behind, and the next mkdir then
-      # failed forever. Reclaim it when it has no live holder: we write
-      # our pid into it immediately, so an empty leftover is from a crash
-      # (this version or an older one) after the 2s wait above.
-      took=0
-      if mkdir "$lockdir.takeover" 2>/dev/null; then
-        took=1
-      else
-        tpid=$(cat "$lockdir.takeover/pid" 2>/dev/null || true)
-        if [ -z "$tpid" ] || ! kill -0 "$tpid" 2>/dev/null; then
-          rm -rf "$lockdir.takeover"
-          mkdir "$lockdir.takeover" 2>/dev/null && took=1
-        fi
-      fi
-      if [ "$took" -eq 1 ]; then
-        printf '%s\n' "$$" > "$lockdir.takeover/pid"
-        [ "$(cat "$lockdir/pid" 2>/dev/null || true)" = "$holder" ] && rm -rf "$lockdir"
-        rm -rf "$lockdir.takeover"
-      fi
+    if [ -n "$holder" ] && ! kill -0 "$holder" 2>/dev/null && mkdir "$lockdir.takeover" 2>/dev/null; then
+      printf '%s\n' "$$" > "$lockdir.takeover/pid" || true
+      [ "$(cat "$lockdir/pid" 2>/dev/null || true)" = "$holder" ] && rm -rf "$lockdir"
+      rm -rf "$lockdir.takeover"
     fi
     for _ in $(seq 40); do
       acquire && { locked=1; break; }
@@ -137,6 +137,10 @@ else
     done
   fi
   if [ "$locked" -eq 0 ]; then
+    if [ "$log_existed" -eq 0 ]; then
+      exec 9>&-
+      rm -f "$logfile"
+    fi
     printf 'runlog: %s is locked by %s (pid %s) and nothing was written. Remove that directory only once you know the writer is gone.\n' "$logfile" "$lockdir" "${holder:-unknown}" >&2
     exit 2
   fi
