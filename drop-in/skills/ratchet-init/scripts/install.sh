@@ -86,10 +86,14 @@ for d in "$from"/skills/*/; do
   [ -d "$d" ] || continue
   [ -f "${d}SKILL.md" ] || absent="$absent skills/$(basename "$d")/SKILL.md"
 done
-# If a skill directory is present, its scripts must be too. An older source that
-# simply omits a skill is fine; a skill folder without the scripts an agent is
-# told to run is not. Names are listed because a scripts/ directory cannot
-# describe files that are missing from it.
+# If a skill directory is present, scripts that *this source's* SKILL.md tells
+# an agent to run must be readable files. An older checkout that simply omits a
+# skill, or whose SKILL.md does not yet name runlog.sh / source-root.sh, is a
+# legitimate source. Names are listed because a scripts/ directory cannot
+# describe files that are missing from it. A mention is skill-local
+# (`scripts/foo.sh`) or this skill's path (`.../skills/<skill>/scripts/foo.sh`);
+# a foreign path like `.agents/skills/ratchet-bugfix/scripts/test-rrr.sh` inside
+# ratchet-init's SKILL.md is not a requirement on ratchet-init.
 for spec in \
   "ratchet-bugfix:rrr.sh test-rrr.sh" \
   "ratchet-handoff:runlog.sh test-runlog.sh" \
@@ -97,8 +101,10 @@ for spec in \
   "ratchet-upgrade:upgrade.sh test-upgrade.sh"
 do
   skill="${spec%%:*}"
-  [ -d "$from/skills/$skill" ] || continue
+  md="$from/skills/$skill/SKILL.md"
+  [ -d "$from/skills/$skill" ] && [ -f "$md" ] || continue
   for s in ${spec#*:}; do
+    grep -qE "(^|[^/])scripts/${s}([^[:alnum:]_-]|$)|/skills/${skill}/scripts/${s}" "$md" || continue
     f="$from/skills/$skill/scripts/$s"
     [ -f "$f" ] && [ -r "$f" ] || absent="$absent skills/$skill/scripts/$s"
   done

@@ -135,6 +135,12 @@ done
 new_repo
 src="$sandbox/src.fewer"; rm -rf "$src"; cp -R "$dropin" "$src"; rm -rf "$src/skills/ratchet-tighten"
 "$install" --from "$src" --to "$repo" >/dev/null 2>&1; [ $? -eq 0 ] && [ -f "$repo/.agents/skills/ratchet-done/SKILL.md" ] && ok || no "refused a source that simply ships fewer skills; the installer must not hardcode the skill list"
+# 1.0.0 shape: handoff exists but has no scripts/ and SKILL.md does not name runlog.sh.
+new_repo
+src="$sandbox/src.pre-runlog"; rm -rf "$src"; cp -R "$dropin" "$src"
+rm -rf "$src/skills/ratchet-handoff/scripts"
+python3 -c 'from pathlib import Path; p=Path("'"$src"'/skills/ratchet-handoff/SKILL.md"); t=p.read_text(); p.write_text("\n".join(l for l in t.splitlines() if "runlog" not in l)+"\n")'
+"$install" --from "$src" --to "$repo" >/dev/null 2>&1; [ $? -eq 0 ] && [ -f "$repo/AGENTS.md" ] && ok || no "refused a source whose SKILL.md does not name scripts the current release added"
 new_repo
 src="$sandbox/src.nohooks"; rm -rf "$src"; cp -R "$dropin" "$src"; rm -rf "$src/hooks" "$src/CLAUDE.md"
 "$install" --from "$src" --to "$repo" --codex >/dev/null 2>&1; [ $? -eq 0 ] && [ -f "$repo/CODEX.md" ] && ok || no "refused a source that only lacks files for an adapter that was not requested"
