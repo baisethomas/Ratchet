@@ -22,6 +22,12 @@ src="$(field .claude-plugin/marketplace.json plugins.0.source)"
 [ -f "$src/.claude-plugin/plugin.json" ] && ok || no "marketplace source '$src' has no plugin.json"
 field drop-in/.claude-plugin/plugin.json version | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' && ok || no "version is not semver"
 
+echo "== ratchet-bugfix skill documents exact-mode restore =="
+# 1.3.1+ restore copies st_mode & 0777, not only the executable bit; the skill
+# must teach that so an agent proving a chmod-only fix does not stop at -x.
+grep -q 'st_mode & 0777' drop-in/skills/ratchet-bugfix/SKILL.md && ok || no "ratchet-bugfix SKILL.md does not document exact-mode restore (st_mode \& 0777)"
+grep -q 'umask' drop-in/skills/ratchet-bugfix/SKILL.md && ok || no "ratchet-bugfix SKILL.md does not document umask-independent restore"
+
 echo "== every skill in the plugin root is a skill, and every drop-in skill is in the plugin root =="
 n=0
 for d in drop-in/skills/*/; do
