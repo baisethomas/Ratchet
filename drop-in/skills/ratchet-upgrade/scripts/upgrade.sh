@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# ratchet-version: 1.3.1
+# ratchet-version: 1.3.2
 # Upgrade Ratchet's per-repo drop-ins to a newer release without losing the owner's edits.
 #
 #   upgrade.sh --to <repo root> [--from <ratchet>/drop-in] [--base <drop-in at the installed version>]
