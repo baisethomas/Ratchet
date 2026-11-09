@@ -118,7 +118,9 @@ for missing in skills hooks CLAUDE.md CODEX.md STATE.md; do
   out="$("$install" --from "$src" --to "$repo" --claude --codex 2>&1)"; code=$?
   [ "$code" -eq 2 ] && [ "$(snapshot "$repo")" = "$before" ] && printf '%s' "$out" | grep -q "$missing" && ok || no "source missing $missing: expected exit 2, the name in the message, and an untouched repo; got exit $code"
 done
-for missing in hooks/guard-destructive.sh hooks/lib-payload.sh skills/ratchet-done/SKILL.md; do
+for missing in hooks/guard-destructive.sh hooks/lib-payload.sh skills/ratchet-done/SKILL.md \
+               skills/ratchet-bugfix/scripts/rrr.sh skills/ratchet-handoff/scripts/runlog.sh \
+               skills/ratchet-init/scripts/install.sh skills/ratchet-upgrade/scripts/upgrade.sh; do
   new_repo
   src="$sandbox/src.partial"; rm -rf "$src"; cp -R "$dropin" "$src"; rm -f "$src/$missing"
   before="$(snapshot "$repo")"

@@ -86,6 +86,23 @@ for d in "$from"/skills/*/; do
   [ -d "$d" ] || continue
   [ -f "${d}SKILL.md" ] || absent="$absent skills/$(basename "$d")/SKILL.md"
 done
+# If a skill directory is present, its scripts must be too. An older source that
+# simply omits a skill is fine; a skill folder without the scripts an agent is
+# told to run is not. Names are listed because a scripts/ directory cannot
+# describe files that are missing from it.
+for spec in \
+  "ratchet-bugfix:rrr.sh test-rrr.sh" \
+  "ratchet-handoff:runlog.sh test-runlog.sh" \
+  "ratchet-init:install.sh source-root.sh test-install.sh test-source-root.sh" \
+  "ratchet-upgrade:upgrade.sh test-upgrade.sh"
+do
+  skill="${spec%%:*}"
+  [ -d "$from/skills/$skill" ] || continue
+  for s in ${spec#*:}; do
+    f="$from/skills/$skill/scripts/$s"
+    [ -f "$f" ] && [ -r "$f" ] || absent="$absent skills/$skill/scripts/$s"
+  done
+done
 [ -z "$absent" ] || die "the source $from is missing:$absent — is the Ratchet checkout up to date? Nothing was written"
 
 added=0
