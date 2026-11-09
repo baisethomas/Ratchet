@@ -86,6 +86,29 @@ for d in "$from"/skills/*/; do
   [ -d "$d" ] || continue
   [ -f "${d}SKILL.md" ] || absent="$absent skills/$(basename "$d")/SKILL.md"
 done
+# If a skill directory is present, scripts that *this source's* SKILL.md tells
+# an agent to run must be readable files. An older checkout that simply omits a
+# skill, or whose SKILL.md does not yet name runlog.sh / source-root.sh, is a
+# legitimate source. Names are listed because a scripts/ directory cannot
+# describe files that are missing from it. A mention is skill-local
+# (`scripts/foo.sh`) or this skill's path (`.../skills/<skill>/scripts/foo.sh`);
+# a foreign path like `.agents/skills/ratchet-bugfix/scripts/test-rrr.sh` inside
+# ratchet-init's SKILL.md is not a requirement on ratchet-init.
+for spec in \
+  "ratchet-bugfix:rrr.sh test-rrr.sh" \
+  "ratchet-handoff:runlog.sh test-runlog.sh" \
+  "ratchet-init:install.sh source-root.sh test-install.sh test-source-root.sh" \
+  "ratchet-upgrade:upgrade.sh test-upgrade.sh"
+do
+  skill="${spec%%:*}"
+  md="$from/skills/$skill/SKILL.md"
+  [ -d "$from/skills/$skill" ] && [ -f "$md" ] || continue
+  for s in ${spec#*:}; do
+    grep -qE "(^|[^/])scripts/${s}([^[:alnum:]_-]|$)|/skills/${skill}/scripts/${s}" "$md" || continue
+    f="$from/skills/$skill/scripts/$s"
+    [ -f "$f" ] && [ -r "$f" ] || absent="$absent skills/$skill/scripts/$s"
+  done
+done
 [ -z "$absent" ] || die "the source $from is missing:$absent — is the Ratchet checkout up to date? Nothing was written"
 
 added=0
@@ -182,6 +205,6 @@ fi
 printf '\n%s added, %s skipped\n' "$added" "$skipped"
 printf 'FROM  %s\n' "$from"
 if [ "$claude" -eq 1 ]; then
-  printf 'NEXT  merge the "hooks" block of %s into .claude/settings.json, fill CHECKS in .claude/hooks/check-on-stop.sh, then run .claude/hooks/test-hooks.sh\n' "$from/claude-code-hooks-settings.json"
+  printf 'NEXT  merge the "hooks" block of %s into .claude/settings.json (JSON cannot hold comments; hooks require jq or node — see that file'\''s _readme), fill CHECKS in .claude/hooks/check-on-stop.sh, then run .claude/hooks/test-hooks.sh\n' "$from/claude-code-hooks-settings.json"
 fi
 exit 0

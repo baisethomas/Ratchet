@@ -44,6 +44,11 @@ done
 "$repo/.claude/skills/ratchet-bugfix/scripts/test-rrr.sh" >/dev/null 2>&1 && ok || no "installed rrr suite fails when run through .claude/skills"
 (cd "$repo" && .claude/hooks/test-hooks.sh >/dev/null 2>&1) && ok || no "installed hooks suite fails"
 [ ! -e "$repo/.claude/settings.json" ] && ok || no "installer wrote .claude/settings.json; merging is the caller's job"
+# settings.json is JSON (no comments). The installer does not write it; the
+# NEXT line and the init skill must carry the jq/node requirement that
+# _readme would have held, because that key is dropped on merge.
+printf '%s' "$out" | grep -qi 'jq' && ok || no "fresh install NEXT does not mention the jq/node requirement"
+grep -qi jq "$dropin/skills/ratchet-init/SKILL.md" && grep -qi node "$dropin/skills/ratchet-init/SKILL.md" && grep -qi 'cannot hold comments' "$dropin/skills/ratchet-init/SKILL.md" && ok || no "ratchet-init SKILL.md does not document jq/node (and that settings.json cannot hold comments)"
 
 echo "== second run changes nothing =="
 before="$(snapshot "$repo")"
@@ -118,7 +123,9 @@ for missing in skills hooks CLAUDE.md CODEX.md STATE.md; do
   out="$("$install" --from "$src" --to "$repo" --claude --codex 2>&1)"; code=$?
   [ "$code" -eq 2 ] && [ "$(snapshot "$repo")" = "$before" ] && printf '%s' "$out" | grep -q "$missing" && ok || no "source missing $missing: expected exit 2, the name in the message, and an untouched repo; got exit $code"
 done
-for missing in hooks/guard-destructive.sh hooks/lib-payload.sh skills/ratchet-done/SKILL.md; do
+for missing in hooks/guard-destructive.sh hooks/lib-payload.sh skills/ratchet-done/SKILL.md \
+               skills/ratchet-bugfix/scripts/rrr.sh skills/ratchet-handoff/scripts/runlog.sh \
+               skills/ratchet-init/scripts/install.sh skills/ratchet-upgrade/scripts/upgrade.sh; do
   new_repo
   src="$sandbox/src.partial"; rm -rf "$src"; cp -R "$dropin" "$src"; rm -f "$src/$missing"
   before="$(snapshot "$repo")"
@@ -128,6 +135,12 @@ done
 new_repo
 src="$sandbox/src.fewer"; rm -rf "$src"; cp -R "$dropin" "$src"; rm -rf "$src/skills/ratchet-tighten"
 "$install" --from "$src" --to "$repo" >/dev/null 2>&1; [ $? -eq 0 ] && [ -f "$repo/.agents/skills/ratchet-done/SKILL.md" ] && ok || no "refused a source that simply ships fewer skills; the installer must not hardcode the skill list"
+# 1.0.0 shape: handoff exists but has no scripts/ and SKILL.md does not name runlog.sh.
+new_repo
+src="$sandbox/src.pre-runlog"; rm -rf "$src"; cp -R "$dropin" "$src"
+rm -rf "$src/skills/ratchet-handoff/scripts"
+python3 -c 'from pathlib import Path; p=Path("'"$src"'/skills/ratchet-handoff/SKILL.md"); t=p.read_text(); p.write_text("\n".join(l for l in t.splitlines() if "runlog" not in l)+"\n")'
+"$install" --from "$src" --to "$repo" >/dev/null 2>&1; [ $? -eq 0 ] && [ -f "$repo/AGENTS.md" ] && ok || no "refused a source whose SKILL.md does not name scripts the current release added"
 new_repo
 src="$sandbox/src.nohooks"; rm -rf "$src"; cp -R "$dropin" "$src"; rm -rf "$src/hooks" "$src/CLAUDE.md"
 "$install" --from "$src" --to "$repo" --codex >/dev/null 2>&1; [ $? -eq 0 ] && [ -f "$repo/CODEX.md" ] && ok || no "refused a source that only lacks files for an adapter that was not requested"
