@@ -166,6 +166,36 @@ else
   echo "SKIP: no UTF-8 locale on this runner; C-locale Unicode cases still ran"
 fi
 
+echo "== Unicode White_Space VT/FF/NEL before = + - @ \" is formula-scrubbed =="
+# White_Space also includes U+000B VT, U+000C FF (flatten like tab/CR) and
+# U+0085 NEL (UTF-8 c2 85). A trim-before-parse importer skips them.
+ws_ctl=( $'\x0b' $'\x0c' )
+nel=$'\xc2\x85'
+n=0
+for loc in C "$utf8_locale"; do
+  [ -n "$loc" ] || continue
+  for prefix in "${ws_ctl[@]}"; do
+    for char in '=' '+' '-' '@' '"'; do
+      n=$((n + 1))
+      val="${prefix}${char}Wpayload${n}"
+      LC_ALL="$loc" "$log" "$f" "w${n}" "$val" "why${n}" "ev${n}" open || no "White_Space ctl append $n ($loc) exited non-zero"
+      cell=$(tail -1 "$f" | cut -f3)
+      expected="' ${char}Wpayload${n}"
+      [ "$cell" = "$expected" ] && ok || no "White_Space ctl ($loc) before $char not scrubbed (case $n): got $(printf %q "$cell")"
+    done
+  done
+  for char in '=' '+' '-' '@' '"'; do
+    n=$((n + 1))
+    val="${nel}${char}Npayload${n}"
+    LC_ALL="$loc" "$log" "$f" "n${n}" "$val" "why${n}" "ev${n}" open || no "NEL append $n ($loc) exited non-zero"
+    cell=$(tail -1 "$f" | cut -f3)
+    [ "$cell" = "'${val}" ] && ok || no "NEL ($loc) before $char not scrubbed (case $n): got $(printf %q "$cell")"
+  done
+done
+if [ -z "$utf8_locale" ]; then
+  echo "SKIP: no UTF-8 locale; VT/FF/NEL C-locale cases still ran"
+fi
+
 echo "== wrong argument count exits 2 and writes nothing =="
 before=$(wc -l < "$f")
 "$log" "$f" only two 2>/dev/null; [ $? -eq 2 ] && ok || no "too few arguments should exit 2"

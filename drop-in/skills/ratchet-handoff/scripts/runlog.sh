@@ -22,10 +22,12 @@
 #   - a cell whose first non-space character is = + - @ or a double quote is
 #     prefixed with a single quote. Tabs and CR are already turned into spaces,
 #     so a tab or CR before =cmd still matches after flattening. "Space" here
-#     is ASCII space plus the Unicode whitespace/BOM characters a trim-before-
+#     is ASCII space plus the Unicode White_Space/BOM characters a trim-before-
 #     parse sheet (or a visually empty prefix) will skip, leaving a formula:
-#     U+00A0 NBSP (HTML/Word paste), U+1680 Ogham space, U+2000–U+200A (en
-#     quad through hair space), U+200B zero-width space (invisible), U+2028
+#     U+0009–U+000D (tab, LF, VT, FF, CR — flattened to space), U+0020 space,
+#     U+0085 NEL, U+00A0 NBSP (HTML/Word paste), U+1680 Ogham space,
+#     U+2000–U+200A (en quad through hair space), U+200B zero-width space
+#     (invisible, not White_Space but a visually empty prefix), U+2028
 #     line separator, U+2029 paragraph separator, U+202F NNBSP, U+205F
 #     medium mathematical space, U+3000 ideographic space (CJK), U+FEFF BOM.
 #     Bidi overrides and homoglyphs are a different attack and are not
@@ -180,9 +182,9 @@ fi
 
 clean() {
   local v stripped
-  v=$(printf '%s' "$1" | tr '\t\n\r' '   ')
+  v=$(printf '%s' "$1" | tr '\t\n\r\v\f' '     ')
   # First non-space character, not the first byte: leading ASCII spaces
-  # (tabs and CR already flattened above) and the Unicode whitespace/BOM
+  # (tab/LF/VT/FF/CR already flattened above) and the Unicode White_Space/BOM
   # listed in the header must not bypass the formula prefix.
   stripped="$v"
   while :; do
@@ -190,6 +192,7 @@ clean() {
     # literal under LC_ALL=C, so those patterns would never match.
     case "$stripped" in
       ' '*) stripped="${stripped# }" ;;
+      $'\xc2\x85'*) stripped="${stripped#$'\xc2\x85'}" ;;                 # U+0085 NEL
       $'\xc2\xa0'*) stripped="${stripped#$'\xc2\xa0'}" ;;                 # U+00A0
       $'\xe1\x9a\x80'*) stripped="${stripped#$'\xe1\x9a\x80'}" ;;         # U+1680
       $'\xe2\x80\x80'*) stripped="${stripped#$'\xe2\x80\x80'}" ;;         # U+2000
