@@ -13,10 +13,11 @@
 #
 # FIX_FILEs must be regular files inside this repository: absolute paths, paths that
 # resolve outside the repo, symlinks, and directories are refused before anything runs.
-# Both content and the executable bit are reverted, so a chmod-only fix can be proven.
-# Restore copies the original permission bits (st_mode & 0777), not only the
-# executable bit: cat-then-chmod-+x/-x follows umask (0600 comes back 0644
-# under umask 022; 0755 comes back 0700 under umask 077).
+# Both content and permission bits (st_mode & 0777) are reverted, so a
+# chmod-only fix can be proven — including 0644 vs 0600 and 0755 vs 0711,
+# not only the executable bit git stores as 100644/100755. Restore and
+# place copy those nine bits: cat-then-chmod-+x/-x follows umask (0600
+# comes back 0644 under umask 022; 0755 comes back 0700 under umask 077).
 # Containment is re-checked at every write, and the script never writes through an
 # existing path, so a test that swaps a fix file or its directory for a symlink cannot
 # redirect a write outside the repo. This guards against accidents, not against a
@@ -108,17 +109,23 @@ same_mode() {
   [ "$a" = "$b" ]
 }
 
-# place <source> <path> — write <source>'s bytes to <path> as a fresh regular file.
+# place <source> <path> — write <source>'s bytes to <path> as a fresh regular file,
+# then copy source's permission bits (st_mode & 0777). cat alone follows umask, so
+# a 0755 source would land as 0700 under umask 077 without the chmod.
 # The test command runs between our checks and our writes and may have replaced a fix
 # file or one of its parent directories with a symlink, so: re-check containment at the
 # moment of writing, and remove whatever is at the path first so nothing is ever written
 # *through* it. rm on a symlink removes the link, not its target.
 place() {
+  local mode
   inside_worktree "$2" || return 1
   [ -d "$2" ] && [ ! -L "$2" ] && return 1
   mkdir -p "$(dirname "$2")" || return 1
   inside_worktree "$2" || return 1
-  rm -f "$2" && cat "$1" >"$2"
+  rm -f "$2" && cat "$1" >"$2" || return 1
+  mode=$(file_mode "$1") || return 1
+  chmod "$mode" "$2" || return 1
+  same_mode "$1" "$2"
 }
 
 # unplace <path> — remove <path> (file or symlink), only if it is still inside the repo.
@@ -276,18 +283,33 @@ if ! fix_intact; then
   exit 1
 fi
 
+# git_perm <path> — the nine permission bits git stores for a regular file at
+# $base (755 or 644). Git only has 100755/100644; working-tree 0600 or 0711
+# still differs from these and counts as a mode-only fix.
+git_perm() {
+  case "$(base_mode "$1")" in
+    100755) printf '755' ;;
+    100644) printf '644' ;;
+  esac
+}
+
 changed=0
 i=0
 for p in "${paths[@]}"; do
   if at_base "$p"; then
     git show "$base:./$p" >"$backup/base" || die "could not read $p at $base"
-    # A fix can be content, the executable bit, or both; revert both.
-    base_exec=0; [ "$(base_mode "$p")" = "100755" ] && base_exec=1
-    now_exec=0; [ -x "$p" ] && now_exec=1
-    if [ ! -e "$p" ] || ! cmp -s "$backup/base" "$p" || [ "$base_exec" -ne "$now_exec" ]; then
+    # A fix can be content, any of the nine mode bits, or both; revert both.
+    want=$(git_perm "$p")
+    now=""
+    if [ -e "$p" ] && [ ! -L "$p" ]; then
+      now=$(file_mode "$p" || true)
+    fi
+    if [ ! -e "$p" ] || ! cmp -s "$backup/base" "$p" || [ "$now" != "$want" ]; then
       changed=1
       place "$backup/base" "$p" || die "$p no longer resolves to a regular file inside the repo after the test ran; refusing to write"
-      if [ "$base_exec" -eq 1 ]; then chmod +x "$p"; else chmod -x "$p"; fi
+      if [ -n "$want" ]; then
+        chmod "$want" "$p" || die "could not restore $p to mode $want at $base"
+      fi
     fi
   elif [ -e "$p" ] || [ -L "$p" ]; then
     changed=1
@@ -323,7 +345,7 @@ reverted_intact() {
   for p in "${paths[@]}"; do
     if [ -f "$backup/reverted-$i" ]; then
       [ -f "$p" ] && [ ! -L "$p" ] && cmp -s "$backup/reverted-$i" "$p" || return 1
-      if [ -x "$backup/reverted-$i" ]; then [ -x "$p" ] || return 1; else [ -x "$p" ] && return 1; fi
+      same_mode "$backup/reverted-$i" "$p" || return 1
     else
       { [ -e "$p" ] || [ -L "$p" ]; } && return 1
     fi

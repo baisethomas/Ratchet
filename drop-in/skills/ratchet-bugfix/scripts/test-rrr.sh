@@ -245,6 +245,71 @@ else
   fail=$((fail + 1)); printf 'FAIL: umask 077 0755 restore — exit %s mode %s (want 755)\n%s\n' "$code" "$got" "$out"
 fi
 
+echo "== a mode-only non-exec change (0644 -> 0600) is PROVEN and restored =="
+# Git stores 100644 for both; exec-bit comparison called this "no fix to revert".
+new_repo
+git checkout -q lib.sh
+chmod 600 lib.sh
+cp lib.sh "$sandbox/expected"
+printf 'python3 -c "import os,sys; sys.exit(0 if (os.stat('\''lib.sh'\'').st_mode & 0o777) == 0o600 else 1)"\n' >mode600_test.sh
+check "mode-only 0600" 0 "RRR: PROVEN" --test "bash mode600_test.sh" -- lib.sh
+got=$(file_mode lib.sh)
+if [ "$got" = "600" ]; then pass=$((pass + 1)); else fail=$((fail + 1)); echo "FAIL: mode-only 0600 was not restored (mode $got)"; fi
+
+echo "== a mode-only exec-preserving change (0755 -> 0711) is PROVEN and restored =="
+new_repo
+git checkout -q lib.sh
+chmod 755 lib.sh
+git add lib.sh && git commit -qm "755"
+chmod 711 lib.sh
+cp lib.sh "$sandbox/expected"
+printf 'python3 -c "import os,sys; sys.exit(0 if (os.stat('\''lib.sh'\'').st_mode & 0o777) == 0o711 else 1)"\n' >mode711_test.sh
+fix_file=lib.sh check "mode-only 0711" 0 "RRR: PROVEN" --test "bash mode711_test.sh" -- lib.sh
+got=$(file_mode lib.sh)
+if [ "$got" = "711" ]; then pass=$((pass + 1)); else fail=$((fail + 1)); echo "FAIL: mode-only 0711 was not restored (mode $got)"; fi
+
+echo "== revert under umask 077 keeps a 0755 base file at 0755 (not 0700) =="
+new_repo
+git checkout -q lib.sh
+chmod 755 lib.sh
+git add lib.sh && git commit -qm "755 buggy"
+printf 'add() { echo $(( $1 + $2 )); }\n' >lib.sh
+chmod 755 lib.sh
+cp lib.sh "$sandbox/expected"
+cat >phase2_mode.sh <<'PHASE'
+n=$(cat runs 2>/dev/null || echo 0); n=$((n + 1)); echo $n >runs
+. ./lib.sh
+if [ "$n" -eq 2 ]; then
+  python3 -c 'import os; open("phase2.mode","w").write("{:o}".format(os.stat("lib.sh").st_mode & 0o777))'
+fi
+[ "$(add 2 3)" = 5 ]
+PHASE
+out=$(umask 077; "$rrr" --test "bash phase2_mode.sh" -- lib.sh 2>&1)
+code=$?
+got=$(file_mode lib.sh)
+p2=$(cat phase2.mode 2>/dev/null || echo missing)
+if [ "$code" -eq 0 ] && printf '%s' "$out" | grep -q "RRR: PROVEN" && [ "$got" = "755" ] && [ "$p2" = "755" ]; then
+  pass=$((pass + 1))
+else
+  fail=$((fail + 1)); printf 'FAIL: umask 077 0755 revert — exit %s restore %s phase2 %s\n%s\n' "$code" "$got" "$p2" "$out"
+fi
+
+echo "== phase 2 exec-preserving mode drift is not intact =="
+new_repo
+git checkout -q lib.sh
+chmod 755 lib.sh
+git add lib.sh && git commit -qm "755 buggy"
+printf 'add() { echo $(( $1 + $2 )); }\n' >lib.sh
+chmod 755 lib.sh
+cp lib.sh "$sandbox/expected"
+cat >phase2_711.sh <<'PHASE'
+n=$(cat runs 2>/dev/null || echo 0); n=$((n + 1)); echo $n >runs
+. ./lib.sh; [ "$(add 2 3)" = 5 ]; rc=$?
+[ "$n" -eq 2 ] && chmod 711 lib.sh
+exit $rc
+PHASE
+check "phase 2 chmod 711 (exec-preserving drift)" 1 "changed the fix files" --test "bash phase2_711.sh" -- lib.sh
+
 echo "== a non-exec mode bit change is not intact =="
 # chmod 600 leaves the owner-exec bit off on a 0644 file, so an exec-only
 # fix_intact still reports PROVEN. Any permission-bit drift must be NOT PROVEN.
